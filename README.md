@@ -26,3 +26,4 @@ Em "Settings" → "Domains" no Vercel, dá pra apontar um domínio comprado (ex.
 - Crie a pesquisa, copie o link público (botão "Copiar link") e distribua (QR code, WhatsApp, etc).
 - Quem recebe o link responde sem precisar de login.
 - Você acompanha as cotas e exporta o CSV quando quiser.
+- Deploy
