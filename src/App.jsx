@@ -14,12 +14,18 @@ const LINE = "#DCD6C6";
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');`;
 
 const DEFAULT_QUOTAS = [
-  { id: "q13-17", label: "13–17 anos", target: 24 },
-  { id: "q18-24", label: "18–24 anos", target: 34 },
-  { id: "q25-34", label: "25–34 anos", target: 52 },
-  { id: "q35-44", label: "35–44 anos", target: 75 },
-  { id: "q45-59", label: "45–59 anos", target: 93 },
-  { id: "q60p", label: "60+ anos", target: 107 },
+  { id: "q13-17-m", label: "13–17 anos · Masculino", target: 12 },
+  { id: "q13-17-f", label: "13–17 anos · Feminino", target: 12 },
+  { id: "q18-24-m", label: "18–24 anos · Masculino", target: 17 },
+  { id: "q18-24-f", label: "18–24 anos · Feminino", target: 17 },
+  { id: "q25-34-m", label: "25–34 anos · Masculino", target: 27 },
+  { id: "q25-34-f", label: "25–34 anos · Feminino", target: 25 },
+  { id: "q35-44-m", label: "35–44 anos · Masculino", target: 40 },
+  { id: "q35-44-f", label: "35–44 anos · Feminino", target: 35 },
+  { id: "q45-59-m", label: "45–59 anos · Masculino", target: 51 },
+  { id: "q45-59-f", label: "45–59 anos · Feminino", target: 42 },
+  { id: "q60p-m", label: "60+ anos · Masculino", target: 46 },
+  { id: "q60p-f", label: "60+ anos · Feminino", target: 61 },
 ];
 
 const uid = (p = "id") => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
@@ -244,6 +250,8 @@ function RespondSurvey() {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [startedAt] = useState(() => Date.now());
 
   useEffect(() => {
     (async () => {
@@ -274,9 +282,23 @@ function RespondSurvey() {
   const submit = async () => {
     if (!canSubmit || submitting) return;
     setSubmitting(true);
-    const { error } = await supabase.from("responses").insert({ survey_id: survey.id, quota_id: quotaId, answers });
+    setSubmitError("");
+    try {
+      const res = await fetch("/api/submit-response", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ surveyId: survey.id, quotaId, answers, startedAt }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSubmitError(data.error || "Não foi possível enviar sua resposta.");
+      } else {
+        setSubmitted(true);
+      }
+    } catch (e) {
+      setSubmitError("Erro de conexão. Tente novamente.");
+    }
     setSubmitting(false);
-    if (!error) setSubmitted(true);
   };
 
   if (submitted) {
@@ -331,6 +353,11 @@ function RespondSurvey() {
           A cota dessa faixa etária já foi preenchida. Obrigado pelo interesse.
         </div>
       )}
+      {submitError && (
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: "#8A3B3B", background: "#FBF0EE", border: "1px solid #E3CBCB", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+          {submitError}
+        </div>
+      )}
       {quotaId && !quotaFull && (
         <Button variant="gold" onClick={submit} disabled={!canSubmit || submitting} style={{ marginTop: 6 }}>{submitting ? <Loader2 size={15} className="spin" /> : <Check size={15} />} Enviar resposta</Button>
       )}
@@ -365,11 +392,14 @@ function SurveyDashboard({ survey, onBack }) {
   };
 
   const exportCSV = () => {
-    const header = ["id", "faixa_etaria", "enviado_em", ...survey.questions.map(q => q.text)];
+    const header = ["id", "faixa_etaria_sexo", "enviado_em", "tempo_resposta_segundos", "regiao", "pais", ...survey.questions.map(q => q.text)];
     const rows = (responses || []).map(r => [
       r.id,
       survey.quotas.find(q => q.id === r.quota_id)?.label || r.quota_id,
       r.submitted_at,
+      r.duration_seconds ?? "",
+      r.region ?? "",
+      r.country ?? "",
       ...survey.questions.map(q => {
         const a = r.answers[q.id];
         return Array.isArray(a) ? a.join(" | ") : (a || "");
