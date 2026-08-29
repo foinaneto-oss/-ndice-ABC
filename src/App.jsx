@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Plus, ArrowLeft, Users, BarChart3, Share2, X, Check, ClipboardList, TrendingUp, Loader2, LogOut, Download } from "lucide-react";
+import { Plus, ArrowLeft, Users, BarChart3, Share2, X, Check, ClipboardList, TrendingUp, Loader2, LogOut, Download, ChevronUp, ChevronDown } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 // ---------- design tokens ----------
@@ -149,6 +149,13 @@ function CreateSurvey({ userId, onCancel, onSave }) {
   const addQuestion = () => setQuestions([...questions, { id: uid("q"), text: "", type: "single", options: ["", ""] }]);
   const removeQuestion = (id) => setQuestions(questions.filter(q => q.id !== id));
   const updateQuestion = (id, patch) => setQuestions(questions.map(q => q.id === id ? { ...q, ...patch } : q));
+  const moveQuestion = (index, direction) => {
+    const target = index + direction;
+    if (target < 0 || target >= questions.length) return;
+    const next = [...questions];
+    [next[index], next[target]] = [next[target], next[index]];
+    setQuestions(next);
+  };
   const updateOption = (qid, idx, val) => setQuestions(questions.map(q => q.id === qid ? { ...q, options: q.options.map((o, i) => i === idx ? val : o) } : q));
   const addOption = (qid) => setQuestions(questions.map(q => q.id === qid ? { ...q, options: [...q.options, ""] } : q));
   const removeOption = (qid, idx) => setQuestions(questions.map(q => q.id === qid ? { ...q, options: q.options.filter((_, i) => i !== idx) } : q));
@@ -193,7 +200,15 @@ function CreateSurvey({ userId, onCancel, onSave }) {
         <div style={{ fontFamily: "'Newsreader', serif", fontSize: 17, color: INK, marginBottom: 10, fontStyle: "italic" }}>Perguntas</div>
         {questions.map((q, qi) => (
           <div key={q.id} style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 14, marginBottom: 12 }}>
-            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                <button onClick={() => moveQuestion(qi, -1)} disabled={qi === 0}
+                  style={{ background: "none", border: `1px solid ${LINE}`, borderRadius: "5px 5px 0 0", cursor: qi === 0 ? "not-allowed" : "pointer", color: qi === 0 ? "#C9C2AC" : BLUE_SOFT, padding: "2px 4px", lineHeight: 0 }}
+                  title="Mover para cima"><ChevronUp size={14} /></button>
+                <button onClick={() => moveQuestion(qi, 1)} disabled={qi === questions.length - 1}
+                  style={{ background: "none", border: `1px solid ${LINE}`, borderTop: "none", borderRadius: "0 0 5px 5px", cursor: qi === questions.length - 1 ? "not-allowed" : "pointer", color: qi === questions.length - 1 ? "#C9C2AC" : BLUE_SOFT, padding: "2px 4px", lineHeight: 0 }}
+                  title="Mover para baixo"><ChevronDown size={14} /></button>
+              </div>
               <input style={{ ...inputStyle, flex: 1 }} value={q.text} onChange={e => updateQuestion(q.id, { text: e.target.value })} placeholder={`Pergunta ${qi + 1}`} />
               {questions.length > 1 && <button onClick={() => removeQuestion(q.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#8A3B3B" }}><X size={18} /></button>}
             </div>
