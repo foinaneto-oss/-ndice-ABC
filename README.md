@@ -27,3 +27,5 @@ Em "Settings" → "Domains" no Vercel, dá pra apontar um domínio comprado (ex.
 - Quem recebe o link responde sem precisar de login.
 - Você acompanha as cotas e exporta o CSV quando quiser.
 - Deploy
+- Deploy
+- 
