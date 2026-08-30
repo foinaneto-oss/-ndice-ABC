@@ -143,11 +143,17 @@ function Login({ onLoggedIn }) {
 }
 
 // ---------- Create Survey ----------
-function CreateSurvey({ userId, onCancel, onSave }) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [questions, setQuestions] = useState([{ id: uid("q"), text: "", type: "single", options: ["", ""], required: true }]);
-  const [quotas, setQuotas] = useState(DEFAULT_QUOTAS.map(q => ({ ...q })));
+function CreateSurvey({ userId, editingSurvey, onCancel, onSave }) {
+  const [title, setTitle] = useState(editingSurvey?.title || "");
+  const [description, setDescription] = useState(editingSurvey?.description || "");
+  const [questions, setQuestions] = useState(
+    editingSurvey?.questions?.length
+      ? editingSurvey.questions.map(q => ({ ...q, required: q.required !== false }))
+      : [{ id: uid("q"), text: "", type: "single", options: ["", ""], required: true }]
+  );
+  const [quotas, setQuotas] = useState(
+    editingSurvey?.quotas?.length ? editingSurvey.quotas.map(q => ({ ...q })) : DEFAULT_QUOTAS.map(q => ({ ...q }))
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -179,9 +185,13 @@ function CreateSurvey({ userId, onCancel, onSave }) {
       description: description.trim(),
       questions: questions.map(q => ({ ...q, options: q.type === "text" ? [] : q.options.filter(o => o.trim()) })),
       quotas: quotas.map(q => ({ ...q, target: Number(q.target) || 0 })),
-      created_by: userId,
     };
-    const { data, error } = await supabase.from("surveys").insert(payload).select().single();
+    let data, error;
+    if (editingSurvey) {
+      ({ data, error } = await supabase.from("surveys").update(payload).eq("id", editingSurvey.id).select().single());
+    } else {
+      ({ data, error } = await supabase.from("surveys").insert({ ...payload, created_by: userId }).select().single());
+    }
     setSaving(false);
     if (error) { setError("Erro ao salvar: " + error.message); return; }
     onSave(data);
@@ -192,7 +202,7 @@ function CreateSurvey({ userId, onCancel, onSave }) {
       <button onClick={onCancel} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: BLUE_SOFT, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, cursor: "pointer", marginBottom: 18, padding: 0 }}>
         <ArrowLeft size={15} /> Voltar
       </button>
-      <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, margin: "0 0 20px" }}>Nova pesquisa</h1>
+      <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, margin: "0 0 20px" }}>{editingSurvey ? "Editar pesquisa" : "Nova pesquisa"}</h1>
 
       <Field label="Título da pesquisa">
         <input style={inputStyle} value={title} onChange={e => setTitle(e.target.value)} placeholder="Ex.: Hábitos de Redes Sociais — São Caetano" />
@@ -257,7 +267,7 @@ function CreateSurvey({ userId, onCancel, onSave }) {
 
       {error && <div style={{ color: "#8A3B3B", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, marginTop: 16 }}>{error}</div>}
       <div style={{ marginTop: 28, display: "flex", gap: 10 }}>
-        <Button variant="gold" onClick={handleSave} disabled={!canSave || saving}>{saving ? <Loader2 size={15} className="spin" /> : <Check size={15} />} Criar pesquisa</Button>
+        <Button variant="gold" onClick={handleSave} disabled={!canSave || saving}>{saving ? <Loader2 size={15} className="spin" /> : <Check size={15} />} {editingSurvey ? "Salvar alterações" : "Criar pesquisa"}</Button>
         <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
       </div>
     </div>
@@ -489,10 +499,11 @@ function RespondSurvey() {
 }
 
 // ---------- Survey dashboard (admin) ----------
-function SurveyDashboard({ survey, onBack }) {
+function SurveyDashboard({ survey, onBack, onEdit, onDuplicated }) {
   const [responses, setResponses] = useState(null);
   const [surveyStatus, setSurveyStatus] = useState(survey.status || "ativa");
   const [statusSaving, setStatusSaving] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const publicUrl = `${window.location.origin}${window.location.pathname}?s=${survey.id}`;
   const previewUrl = `${publicUrl}&preview=1`;
 
@@ -502,6 +513,20 @@ function SurveyDashboard({ survey, onBack }) {
     const { error } = await supabase.from("surveys").update({ status: next }).eq("id", survey.id);
     if (!error) setSurveyStatus(next);
     setStatusSaving(false);
+  };
+
+  const duplicateSurvey = async () => {
+    setDuplicating(true);
+    const { data, error } = await supabase.from("surveys").insert({
+      title: `${survey.title} (cópia)`,
+      description: survey.description,
+      questions: survey.questions,
+      quotas: survey.quotas,
+      created_by: survey.created_by,
+      status: "ativa",
+    }).select().single();
+    setDuplicating(false);
+    if (!error && data) onDuplicated(data);
   };
 
   const load = useCallback(async () => {
@@ -551,6 +576,8 @@ function SurveyDashboard({ survey, onBack }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
         <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 25, color: INK, margin: 0 }}>{survey.title}</h1>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Button variant="ghost" onClick={onEdit}>Editar</Button>
+          <Button variant="ghost" onClick={duplicateSurvey} disabled={duplicating}>{duplicating ? <Loader2 size={14} className="spin" /> : null} Duplicar</Button>
           <Button variant="ghost" onClick={() => window.open(previewUrl, "_blank")}>Pré-visualizar</Button>
           <Button variant={surveyStatus === "ativa" ? "danger" : "primary"} onClick={toggleStatus} disabled={statusSaving}>
             {statusSaving ? <Loader2 size={14} className="spin" /> : null}
@@ -616,7 +643,7 @@ function SurveyDashboard({ survey, onBack }) {
 }
 
 // ---------- List view (admin) ----------
-function SurveyList({ onCreate, onOpen }) {
+function SurveyList({ onCreate, onOpen, onViewSubscribers }) {
   const [surveys, setSurveys] = useState(null);
 
   useEffect(() => {
@@ -630,12 +657,15 @@ function SurveyList({ onCreate, onOpen }) {
 
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "20px 16px 60px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22, flexWrap: "wrap", gap: 10 }}>
         <div>
           <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, margin: 0 }}>Pesquisas</h1>
           <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT }}>{surveys.length} {surveys.length === 1 ? "pesquisa criada" : "pesquisas criadas"}</div>
         </div>
-        <Button variant="gold" onClick={onCreate}><Plus size={15} /> Nova pesquisa</Button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Button variant="ghost" onClick={onViewSubscribers}>Inscritos</Button>
+          <Button variant="gold" onClick={onCreate}><Plus size={15} /> Nova pesquisa</Button>
+        </div>
       </div>
 
       {surveys.length === 0 && (
@@ -648,11 +678,70 @@ function SurveyList({ onCreate, onOpen }) {
 
       {surveys.map(s => (
         <button key={s.id} onClick={() => onOpen(s)} style={{ display: "block", width: "100%", textAlign: "left", background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 10, cursor: "pointer" }}>
-          <div style={{ fontFamily: "'Newsreader', serif", fontSize: 17, color: INK }}>{s.title}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontFamily: "'Newsreader', serif", fontSize: 17, color: INK }}>{s.title}</div>
+            {s.status === "encerrada" && (
+              <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 10.5, padding: "2px 7px", borderRadius: 10, background: "#F1EEE3", color: BLUE_SOFT }}>encerrada</span>
+            )}
+          </div>
           {s.description && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, marginTop: 3 }}>{s.description}</div>}
           <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD, marginTop: 8 }}>{s.questions.length} perguntas · meta de {s.quotas.reduce((sum, q) => sum + q.target, 0)} respostas</div>
         </button>
       ))}
+    </div>
+  );
+}
+
+// ---------- Subscribers view (admin) ----------
+function SubscribersView({ onBack }) {
+  const [subscribers, setSubscribers] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("subscribers").select("*, surveys(title)").order("created_at", { ascending: false });
+      setSubscribers(data || []);
+    })();
+  }, []);
+
+  const exportCSV = () => {
+    const header = ["nome", "ddd", "telefone", "email", "cidade", "pesquisa_origem", "inscrito_em"];
+    const rows = (subscribers || []).map(s => [
+      s.name, s.ddd || "", s.phone || "", s.email || "", s.city || "", s.surveys?.title || "", s.created_at,
+    ]);
+    downloadCSV("inscritos_indice_abc.csv", [header, ...rows]);
+  };
+
+  return (
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "20px 16px 60px" }}>
+      <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: BLUE_SOFT, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, cursor: "pointer", marginBottom: 14, padding: 0 }}>
+        <ArrowLeft size={15} /> Todas as pesquisas
+      </button>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, margin: 0 }}>Inscritos</h1>
+          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT }}>Cadastros para sorteios de prêmios e vouchers</div>
+        </div>
+        <Button variant="primary" onClick={exportCSV} disabled={!subscribers?.length}><Download size={14} /> Exportar CSV</Button>
+      </div>
+
+      {subscribers === null ? <Loader2 className="spin" size={18} color={BLUE_SOFT} /> : subscribers.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "40px 20px", border: `1px dashed ${LINE}`, borderRadius: 12, color: BLUE_SOFT, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5 }}>
+          Ninguém se inscreveu ainda.
+        </div>
+      ) : (
+        <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, overflow: "hidden" }}>
+          {subscribers.map((s, i) => (
+            <div key={s.id} style={{ padding: "12px 16px", borderTop: i > 0 ? `1px solid ${LINE}` : "none" }}>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14, color: INK }}>{s.name}</div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: BLUE_SOFT, marginTop: 2 }}>
+                {s.ddd && s.phone ? `(${s.ddd}) ${s.phone}` : ""} {s.email ? `· ${s.email}` : ""} {s.city ? `· ${s.city}` : ""}
+              </div>
+              {s.surveys?.title && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11, color: GOLD, marginTop: 2 }}>via {s.surveys.title}</div>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -705,9 +794,17 @@ export default function App() {
         </button>
       </div>
 
-      {view === "list" && <SurveyList onCreate={() => setView("create")} onOpen={(s) => { setActiveSurvey(s); setView("dashboard"); }} />}
-      {view === "create" && <CreateSurvey userId={session.user.id} onCancel={() => setView("list")} onSave={(s) => { setActiveSurvey(s); setView("dashboard"); }} />}
-      {view === "dashboard" && activeSurvey && <SurveyDashboard survey={activeSurvey} onBack={() => setView("list")} />}
+      {view === "list" && <SurveyList onCreate={() => { setActiveSurvey(null); setView("create"); }} onOpen={(s) => { setActiveSurvey(s); setView("dashboard"); }} onViewSubscribers={() => setView("subscribers")} />}
+      {view === "create" && <CreateSurvey userId={session.user.id} editingSurvey={activeSurvey} onCancel={() => setView(activeSurvey ? "dashboard" : "list")} onSave={(s) => { setActiveSurvey(s); setView("dashboard"); }} />}
+      {view === "dashboard" && activeSurvey && (
+        <SurveyDashboard
+          survey={activeSurvey}
+          onBack={() => setView("list")}
+          onEdit={() => setView("create")}
+          onDuplicated={(s) => { setActiveSurvey(s); setView("dashboard"); }}
+        />
+      )}
+      {view === "subscribers" && <SubscribersView onBack={() => setView("list")} />}
     </div>
   );
 }
