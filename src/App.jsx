@@ -253,14 +253,23 @@ function CreateSurvey({ userId, editingSurvey, onCancel, onSave }) {
       </div>
 
       <div style={{ borderTop: `1px solid ${LINE}`, paddingTop: 18 }}>
-        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 17, color: INK, marginBottom: 4, fontStyle: "italic" }}>Cotas por faixa etária</div>
-        {quotas.map(q => (
-          <div key={q.id} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
-            <input style={{ ...inputStyle, flex: 2 }} value={q.label} onChange={e => updateQuota(q.id, { label: e.target.value })} />
-            <input style={{ ...inputStyle, flex: 1, fontFamily: "'IBM Plex Mono', monospace" }} type="number" min="0" value={q.target} onChange={e => updateQuota(q.id, { target: e.target.value })} />
-            <button onClick={() => removeQuota(q.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#8A3B3B" }}><X size={16} /></button>
-          </div>
-        ))}
+        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 17, color: INK, marginBottom: 4, fontStyle: "italic" }}>Cotas da amostra</div>
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT, marginBottom: 12 }}>
+          Preencha "Faixa etária" e, se quiser cruzar com sexo, o segundo campo — o formulário público mostra os dois como perguntas separadas, mas a cota é controlada pela combinação.
+        </div>
+        {quotas.map(q => {
+          const [g1 = "", g2 = ""] = (q.label || "").split(" · ");
+          const setG1 = (val) => updateQuota(q.id, { label: g2 ? `${val} · ${g2}` : val });
+          const setG2 = (val) => updateQuota(q.id, { label: val ? `${g1} · ${val}` : g1 });
+          return (
+            <div key={q.id} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <input style={{ ...inputStyle, flex: 2, minWidth: 140 }} value={g1} onChange={e => setG1(e.target.value)} placeholder="Faixa etária" />
+              <input style={{ ...inputStyle, flex: 1, minWidth: 110 }} value={g2} onChange={e => setG2(e.target.value)} placeholder="Sexo (opcional)" />
+              <input style={{ ...inputStyle, flex: 1, minWidth: 70, fontFamily: "'IBM Plex Mono', monospace" }} type="number" min="0" value={q.target} onChange={e => updateQuota(q.id, { target: e.target.value })} />
+              <button onClick={() => removeQuota(q.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#8A3B3B" }}><X size={16} /></button>
+            </div>
+          );
+        })}
         <Button variant="ghost" onClick={addQuota} style={{ marginTop: 4 }}><Plus size={15} /> Adicionar faixa</Button>
         <div style={{ marginTop: 12, fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: INK }}>Total da amostra-alvo: <strong>{totalTarget}</strong> respostas</div>
       </div>
@@ -281,6 +290,8 @@ function RespondSurvey() {
   const [survey, setSurvey] = useState(null);
   const [counts, setCounts] = useState({});
   const [quotaId, setQuotaId] = useState(null);
+  const [group1, setGroup1] = useState(null);
+  const [group2, setGroup2] = useState(null);
   const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -316,6 +327,32 @@ function RespondSurvey() {
 
   const chosenQuota = survey.quotas.find(q => q.id === quotaId);
   const quotaFull = chosenQuota && (counts[chosenQuota.id] || 0) >= chosenQuota.target;
+
+  // Detecta se as cotas usam duas dimensões (ex: "13–17 anos · Masculino")
+  const parsedQuotas = survey.quotas.map(q => {
+    const parts = (q.label || "").split(" · ");
+    return { ...q, g1: parts[0] || q.label, g2: parts.length > 1 ? parts[1] : null };
+  });
+  const isTwoDimensional = parsedQuotas.length > 0 && parsedQuotas.every(q => q.g2);
+  const group1Options = isTwoDimensional ? [...new Set(parsedQuotas.map(q => q.g1))] : [];
+  const group2Options = isTwoDimensional && group1 ? [...new Set(parsedQuotas.filter(q => q.g1 === group1).map(q => q.g2))] : [];
+
+  const isFullFor = (g1val, g2val) => {
+    const q = parsedQuotas.find(x => x.g1 === g1val && (g2val == null || x.g2 === g2val));
+    if (!q) return false;
+    return (counts[q.id] || 0) >= q.target;
+  };
+
+  useEffect(() => {
+    if (!isTwoDimensional) return;
+    if (group1 && group2) {
+      const match = parsedQuotas.find(q => q.g1 === group1 && q.g2 === group2);
+      setQuotaId(match ? match.id : null);
+    } else {
+      setQuotaId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [group1, group2, isTwoDimensional]);
 
   const setAnswer = (qid, val) => setAnswers(a => ({ ...a, [qid]: val }));
   const toggleMulti = (qid, opt) => setAnswers(a => {
@@ -438,17 +475,48 @@ function RespondSurvey() {
       )}
 
       <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
-        <Field label="Sua faixa etária">
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {survey.quotas.map(q => {
-              const full = (counts[q.id] || 0) >= q.target;
-              const active = quotaId === q.id;
-              return (
-                <button key={q.id} disabled={full} onClick={() => setQuotaId(q.id)} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, padding: "7px 12px", borderRadius: 20, cursor: full ? "not-allowed" : "pointer", border: `1px solid ${active ? BLUE : LINE}`, background: active ? BLUE : full ? "#EDE8DA" : "#fff", color: active ? "#fff" : full ? "#A79C7E" : INK, textDecoration: full ? "line-through" : "none" }}>{q.label}{full ? " · completa" : ""}</button>
-              );
-            })}
-          </div>
-        </Field>
+        {isTwoDimensional ? (
+          <>
+            <Field label="Sua faixa etária">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {group1Options.map(g1 => {
+                  const full = parsedQuotas.filter(q => q.g1 === g1).every(q => (counts[q.id] || 0) >= q.target);
+                  const active = group1 === g1;
+                  return (
+                    <button key={g1} disabled={full} onClick={() => { setGroup1(g1); setGroup2(null); }}
+                      style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, padding: "7px 12px", borderRadius: 20, cursor: full ? "not-allowed" : "pointer", border: `1px solid ${active ? BLUE : LINE}`, background: active ? BLUE : full ? "#EDE8DA" : "#fff", color: active ? "#fff" : full ? "#A79C7E" : INK, textDecoration: full ? "line-through" : "none" }}>{g1}{full ? " · completa" : ""}</button>
+                  );
+                })}
+              </div>
+            </Field>
+            {group1 && (
+              <Field label="Sexo">
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {group2Options.map(g2 => {
+                    const full = isFullFor(group1, g2);
+                    const active = group2 === g2;
+                    return (
+                      <button key={g2} disabled={full} onClick={() => setGroup2(g2)}
+                        style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, padding: "7px 12px", borderRadius: 20, cursor: full ? "not-allowed" : "pointer", border: `1px solid ${active ? BLUE : LINE}`, background: active ? BLUE : full ? "#EDE8DA" : "#fff", color: active ? "#fff" : full ? "#A79C7E" : INK, textDecoration: full ? "line-through" : "none" }}>{g2}{full ? " · completa" : ""}</button>
+                    );
+                  })}
+                </div>
+              </Field>
+            )}
+          </>
+        ) : (
+          <Field label="Sua faixa etária">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {survey.quotas.map(q => {
+                const full = (counts[q.id] || 0) >= q.target;
+                const active = quotaId === q.id;
+                return (
+                  <button key={q.id} disabled={full} onClick={() => setQuotaId(q.id)} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, padding: "7px 12px", borderRadius: 20, cursor: full ? "not-allowed" : "pointer", border: `1px solid ${active ? BLUE : LINE}`, background: active ? BLUE : full ? "#EDE8DA" : "#fff", color: active ? "#fff" : full ? "#A79C7E" : INK, textDecoration: full ? "line-through" : "none" }}>{q.label}{full ? " · completa" : ""}</button>
+                );
+              })}
+            </div>
+          </Field>
+        )}
       </div>
 
       {quotaId && !quotaFull && survey.questions.map((q, qi) => (
