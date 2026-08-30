@@ -574,11 +574,13 @@ function RespondSurvey() {
 }
 
 // ---------- Survey dashboard (admin) ----------
-function SurveyDashboard({ survey, onBack, onEdit, onDuplicated }) {
+function SurveyDashboard({ survey, onBack, onEdit, onDuplicated, onDeleted }) {
   const [responses, setResponses] = useState(null);
   const [surveyStatus, setSurveyStatus] = useState(survey.status || "ativa");
   const [statusSaving, setStatusSaving] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const publicUrl = `${window.location.origin}${window.location.pathname}?s=${survey.id}`;
   const previewUrl = `${publicUrl}&preview=1`;
 
@@ -602,6 +604,13 @@ function SurveyDashboard({ survey, onBack, onEdit, onDuplicated }) {
     }).select().single();
     setDuplicating(false);
     if (!error && data) onDuplicated(data);
+  };
+
+  const deleteSurvey = async () => {
+    setDeleting(true);
+    const { error } = await supabase.from("surveys").delete().eq("id", survey.id);
+    setDeleting(false);
+    if (!error) onDeleted();
   };
 
   const load = useCallback(async () => {
@@ -660,8 +669,24 @@ function SurveyDashboard({ survey, onBack, onEdit, onDuplicated }) {
           </Button>
           <Button variant="ghost" onClick={() => navigator.clipboard?.writeText(publicUrl)}><Share2 size={14} /> Copiar link</Button>
           <Button variant="primary" onClick={exportCSV}><Download size={14} /> Exportar CSV</Button>
+          <Button variant="danger" onClick={() => setConfirmingDelete(true)}><X size={14} /> Excluir</Button>
         </div>
       </div>
+
+      {confirmingDelete && (
+        <div style={{ background: "#FBF0EE", border: "1px solid #E3CBCB", borderRadius: 10, padding: 16, marginBottom: 18 }}>
+          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 13.5, color: "#8A3B3B", marginBottom: 6 }}>
+            Excluir "{survey.title}" permanentemente?
+          </div>
+          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: "#8A3B3B", marginBottom: 12 }}>
+            Isso apaga a pesquisa e as {responses?.length ?? 0} respostas coletadas. Não é possível desfazer.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button variant="danger" onClick={deleteSurvey} disabled={deleting}>{deleting ? <Loader2 size={14} className="spin" /> : null} Sim, excluir de vez</Button>
+            <Button variant="ghost" onClick={() => setConfirmingDelete(false)}>Cancelar</Button>
+          </div>
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
         <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, padding: "2px 8px", borderRadius: 12, background: surveyStatus === "ativa" ? "#E5F1E9" : "#F1EEE3", color: surveyStatus === "ativa" ? "#3E7A52" : BLUE_SOFT }}>
           {surveyStatus === "ativa" ? "Coletando respostas" : "Coleta encerrada"}
@@ -877,6 +902,7 @@ export default function App() {
           onBack={() => setView("list")}
           onEdit={() => setView("create")}
           onDuplicated={(s) => { setActiveSurvey(s); setView("dashboard"); }}
+          onDeleted={() => { setActiveSurvey(null); setView("list"); }}
         />
       )}
       {view === "subscribers" && <SubscribersView onBack={() => setView("list")} />}
