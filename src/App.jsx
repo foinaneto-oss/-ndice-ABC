@@ -36,6 +36,11 @@ function getPublicSurveyId() {
   return params.get("s");
 }
 
+function isPreviewMode() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("preview") === "1";
+}
+
 // ---------- shared bits ----------
 function Brand() {
   return (
@@ -141,12 +146,12 @@ function Login({ onLoggedIn }) {
 function CreateSurvey({ userId, onCancel, onSave }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [questions, setQuestions] = useState([{ id: uid("q"), text: "", type: "single", options: ["", ""] }]);
+  const [questions, setQuestions] = useState([{ id: uid("q"), text: "", type: "single", options: ["", ""], required: true }]);
   const [quotas, setQuotas] = useState(DEFAULT_QUOTAS.map(q => ({ ...q })));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const addQuestion = () => setQuestions([...questions, { id: uid("q"), text: "", type: "single", options: ["", ""] }]);
+  const addQuestion = () => setQuestions([...questions, { id: uid("q"), text: "", type: "single", options: ["", ""], required: true }]);
   const removeQuestion = (id) => setQuestions(questions.filter(q => q.id !== id));
   const updateQuestion = (id, patch) => setQuestions(questions.map(q => q.id === id ? { ...q, ...patch } : q));
   const moveQuestion = (index, direction) => {
@@ -212,10 +217,14 @@ function CreateSurvey({ userId, onCancel, onSave }) {
               <input style={{ ...inputStyle, flex: 1 }} value={q.text} onChange={e => updateQuestion(q.id, { text: e.target.value })} placeholder={`Pergunta ${qi + 1}`} />
               {questions.length > 1 && <button onClick={() => removeQuestion(q.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#8A3B3B" }}><X size={18} /></button>}
             </div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center" }}>
               {[["single", "Escolha única"], ["multi", "Múltipla escolha"], ["text", "Texto livre"]].map(([val, lab]) => (
                 <button key={val} onClick={() => updateQuestion(q.id, { type: val })} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, padding: "5px 10px", borderRadius: 20, cursor: "pointer", border: `1px solid ${q.type === val ? BLUE : LINE}`, background: q.type === val ? BLUE : "#fff", color: q.type === val ? "#fff" : BLUE_SOFT }}>{lab}</button>
               ))}
+              <button onClick={() => updateQuestion(q.id, { required: q.required === false ? true : false })}
+                style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, padding: "5px 10px", borderRadius: 20, cursor: "pointer", border: `1px solid ${q.required === false ? LINE : GOLD}`, background: q.required === false ? "#fff" : "#FBF3E4", color: q.required === false ? BLUE_SOFT : "#8A6416", marginLeft: "auto" }}>
+                {q.required === false ? "Opcional" : "Obrigatória"}
+              </button>
             </div>
             {q.type !== "text" && (
               <div>
@@ -258,6 +267,7 @@ function CreateSurvey({ userId, onCancel, onSave }) {
 // ---------- Public respond view (no login) ----------
 function RespondSurvey() {
   const surveyId = getPublicSurveyId();
+  const preview = isPreviewMode();
   const [survey, setSurvey] = useState(null);
   const [counts, setCounts] = useState({});
   const [quotaId, setQuotaId] = useState(null);
@@ -267,6 +277,9 @@ function RespondSurvey() {
   const [notFound, setNotFound] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [startedAt] = useState(() => Date.now());
+  const [honeypot, setHoneypot] = useState("");
+  const [subscribeData, setSubscribeData] = useState({ name: "", ddd: "", phone: "", email: "", city: "" });
+  const [subscribeStatus, setSubscribeStatus] = useState("idle"); // idle | saving | done
 
   useEffect(() => {
     (async () => {
@@ -282,6 +295,14 @@ function RespondSurvey() {
 
   if (notFound) return <div style={{ padding: 40, textAlign: "center", fontFamily: "'IBM Plex Sans', sans-serif", color: BLUE_SOFT }}>Pesquisa não encontrada.</div>;
   if (!survey) return <div style={{ padding: 40, textAlign: "center", color: BLUE_SOFT }}><Loader2 className="spin" size={20} /></div>;
+  if (survey.status === "encerrada" && !preview) {
+    return (
+      <div style={{ maxWidth: 480, margin: "60px auto", padding: "0 20px", textAlign: "center" }}>
+        <h2 style={{ fontFamily: "'Newsreader', serif", fontSize: 20, color: INK }}>Coleta encerrada</h2>
+        <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: BLUE_SOFT, fontSize: 14 }}>Esta pesquisa não está mais recebendo respostas. Obrigado pelo interesse.</p>
+      </div>
+    );
+  }
 
   const chosenQuota = survey.quotas.find(q => q.id === quotaId);
   const quotaFull = chosenQuota && (counts[chosenQuota.id] || 0) >= chosenQuota.target;
@@ -292,17 +313,36 @@ function RespondSurvey() {
     return { ...a, [qid]: cur.includes(opt) ? cur.filter(o => o !== opt) : [...cur, opt] };
   });
 
-  const canSubmit = quotaId && !quotaFull && survey.questions.every(q => q.type === "multi" ? (answers[q.id] || []).length > 0 : answers[q.id] && String(answers[q.id]).trim());
+  const canSubmit = quotaId && !quotaFull && survey.questions.every(q => {
+    if (q.required === false) return true;
+    return q.type === "multi" ? (answers[q.id] || []).length > 0 : answers[q.id] && String(answers[q.id]).trim();
+  });
+  const answeredCount = survey.questions.filter(q => q.type === "multi" ? (answers[q.id] || []).length > 0 : answers[q.id] && String(answers[q.id]).trim()).length;
 
   const submit = async () => {
     if (!canSubmit || submitting) return;
+
+    // Honeypot: campo invisível que só um robô preencheria.
+    // Se vier preenchido, fingimos sucesso mas não gravamos nada.
+    if (honeypot.trim() !== "") {
+      setSubmitted(true);
+      return;
+    }
+
+    // Modo de pré-visualização: não grava nada de verdade.
+    if (preview) {
+      setSubmitting(true);
+      setTimeout(() => { setSubmitting(false); setSubmitted(true); }, 400);
+      return;
+    }
+
     setSubmitting(true);
     setSubmitError("");
     try {
       const res = await fetch("/api/submit-response", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ surveyId: survey.id, quotaId, answers, startedAt }),
+        body: JSON.stringify({ surveyId: survey.id, quotaId, answers, startedAt, honeypot }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -321,7 +361,49 @@ function RespondSurvey() {
       <div style={{ maxWidth: 480, margin: "60px auto", padding: "0 20px", textAlign: "center" }}>
         <div style={{ width: 50, height: 50, borderRadius: "50%", background: "#3E7A52", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}><Check color="#fff" size={24} /></div>
         <h2 style={{ fontFamily: "'Newsreader', serif", fontSize: 22, color: INK }}>Obrigado pela participação</h2>
-        <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: BLUE_SOFT, fontSize: 14 }}>Sua resposta foi registrada.</p>
+        <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: BLUE_SOFT, fontSize: 14 }}>
+          {preview ? "Isso foi uma pré-visualização — nada foi salvo de verdade." : "Sua resposta foi registrada."}
+        </p>
+        {!preview && (
+          <div style={{ marginTop: 24, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 18, textAlign: "left" }}>
+            {subscribeStatus === "done" ? (
+              <div style={{ textAlign: "center", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: "#3E7A52" }}>
+                <Check size={18} style={{ verticalAlign: "middle", marginRight: 6 }} />
+                Inscrição recebida! Boa sorte 🍀
+              </div>
+            ) : (
+              <>
+                <div style={{ fontFamily: "'Newsreader', serif", fontSize: 15, color: INK, marginBottom: 4, textAlign: "center" }}>
+                  Se inscreva e participe das nossas pesquisas e ganhe prêmios e vouchers
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <input style={{ ...inputStyle, marginBottom: 8 }} placeholder="Nome" value={subscribeData.name} onChange={e => setSubscribeData(d => ({ ...d, name: e.target.value }))} />
+                  <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                    <input style={{ ...inputStyle, width: 60 }} placeholder="DDD" maxLength={2} value={subscribeData.ddd} onChange={e => setSubscribeData(d => ({ ...d, ddd: e.target.value.replace(/\D/g, "") }))} />
+                    <input style={{ ...inputStyle, flex: 1 }} placeholder="Telefone" value={subscribeData.phone} onChange={e => setSubscribeData(d => ({ ...d, phone: e.target.value }))} />
+                  </div>
+                  <input style={{ ...inputStyle, marginBottom: 8 }} type="email" placeholder="E-mail" value={subscribeData.email} onChange={e => setSubscribeData(d => ({ ...d, email: e.target.value }))} />
+                  <input style={{ ...inputStyle, marginBottom: 12 }} placeholder="Cidade" value={subscribeData.city} onChange={e => setSubscribeData(d => ({ ...d, city: e.target.value }))} />
+                  <Button variant="gold" style={{ width: "100%", justifyContent: "center" }} disabled={subscribeStatus === "saving" || !subscribeData.name.trim()}
+                    onClick={async () => {
+                      setSubscribeStatus("saving");
+                      const { error } = await supabase.from("subscribers").insert({
+                        survey_id: survey.id,
+                        name: subscribeData.name.trim(),
+                        ddd: subscribeData.ddd.trim(),
+                        phone: subscribeData.phone.trim(),
+                        email: subscribeData.email.trim(),
+                        city: subscribeData.city.trim(),
+                      });
+                      setSubscribeStatus(error ? "idle" : "done");
+                    }}>
+                    {subscribeStatus === "saving" ? <Loader2 size={15} className="spin" /> : "Quero participar"}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -330,7 +412,20 @@ function RespondSurvey() {
     <div style={{ maxWidth: 560, margin: "0 auto", padding: "20px 16px 60px" }}>
       <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11, color: GOLD, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Índice ABC</div>
       <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 24, color: INK, margin: "4px 0 6px" }}>{survey.title}</h1>
-      {survey.description && <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 20 }}>{survey.description}</p>}
+      {survey.description && <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 12 }}>{survey.description}</p>}
+
+      <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: BLUE_SOFT, background: "#F1EEE3", border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px", marginBottom: 16 }}>
+        Suas respostas são anônimas e usadas apenas para fins de pesquisa do Instituto Índice e Desenvolvimento do ABC, conforme a LGPD.
+      </div>
+
+      {quotaId && !quotaFull && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: BLUE_SOFT, marginBottom: 4 }}>{answeredCount} de {survey.questions.length} perguntas respondidas</div>
+          <div style={{ height: 6, background: "#EDE8DA", borderRadius: 4 }}>
+            <div style={{ height: "100%", width: `${(answeredCount / survey.questions.length) * 100}%`, background: GOLD, borderRadius: 4, transition: "width 0.3s ease" }} />
+          </div>
+        </div>
+      )}
 
       <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
         <Field label="Sua faixa etária">
@@ -373,6 +468,19 @@ function RespondSurvey() {
           {submitError}
         </div>
       )}
+
+      {/* Campo honeypot: invisível para pessoas, só bots costumam preencher */}
+      <input
+        type="text"
+        name="website"
+        value={honeypot}
+        onChange={e => setHoneypot(e.target.value)}
+        autoComplete="off"
+        tabIndex={-1}
+        style={{ position: "absolute", left: "-9999px", width: 1, height: 1, opacity: 0 }}
+        aria-hidden="true"
+      />
+
       {quotaId && !quotaFull && (
         <Button variant="gold" onClick={submit} disabled={!canSubmit || submitting} style={{ marginTop: 6 }}>{submitting ? <Loader2 size={15} className="spin" /> : <Check size={15} />} Enviar resposta</Button>
       )}
@@ -383,7 +491,18 @@ function RespondSurvey() {
 // ---------- Survey dashboard (admin) ----------
 function SurveyDashboard({ survey, onBack }) {
   const [responses, setResponses] = useState(null);
+  const [surveyStatus, setSurveyStatus] = useState(survey.status || "ativa");
+  const [statusSaving, setStatusSaving] = useState(false);
   const publicUrl = `${window.location.origin}${window.location.pathname}?s=${survey.id}`;
+  const previewUrl = `${publicUrl}&preview=1`;
+
+  const toggleStatus = async () => {
+    setStatusSaving(true);
+    const next = surveyStatus === "ativa" ? "encerrada" : "ativa";
+    const { error } = await supabase.from("surveys").update({ status: next }).eq("id", survey.id);
+    if (!error) setSurveyStatus(next);
+    setStatusSaving(false);
+  };
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("responses").select("*").eq("survey_id", survey.id);
@@ -431,10 +550,20 @@ function SurveyDashboard({ survey, onBack }) {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
         <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 25, color: INK, margin: 0 }}>{survey.title}</h1>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Button variant="ghost" onClick={() => window.open(previewUrl, "_blank")}>Pré-visualizar</Button>
+          <Button variant={surveyStatus === "ativa" ? "danger" : "primary"} onClick={toggleStatus} disabled={statusSaving}>
+            {statusSaving ? <Loader2 size={14} className="spin" /> : null}
+            {surveyStatus === "ativa" ? "Encerrar coleta" : "Reabrir coleta"}
+          </Button>
           <Button variant="ghost" onClick={() => navigator.clipboard?.writeText(publicUrl)}><Share2 size={14} /> Copiar link</Button>
           <Button variant="primary" onClick={exportCSV}><Download size={14} /> Exportar CSV</Button>
         </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, padding: "2px 8px", borderRadius: 12, background: surveyStatus === "ativa" ? "#E5F1E9" : "#F1EEE3", color: surveyStatus === "ativa" ? "#3E7A52" : BLUE_SOFT }}>
+          {surveyStatus === "ativa" ? "Coletando respostas" : "Coleta encerrada"}
+        </span>
       </div>
       <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: BLUE_SOFT, marginBottom: 18, wordBreak: "break-all" }}>{publicUrl}</div>
 
