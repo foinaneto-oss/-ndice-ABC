@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Plus, ArrowLeft, Users, BarChart3, Share2, X, Check, ClipboardList, TrendingUp, Loader2, LogOut, Download, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, ArrowLeft, Users, BarChart3, Share2, X, Check, ClipboardList, TrendingUp, Loader2, LogOut, Download, ChevronUp, ChevronDown, Instagram, Facebook, Copy } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 // ---------- design tokens ----------
@@ -10,6 +10,10 @@ const GOLD = "#C79A45";
 const GOLD_SOFT = "#E7D4A4";
 const PAPER = "#F7F5EF";
 const LINE = "#DCD6C6";
+
+// Edite aqui os links das redes sociais do instituto
+const INSTAGRAM_URL = "https://instagram.com/indiceabc";
+const FACEBOOK_URL = "https://facebook.com/indiceabc";
 
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');`;
 
@@ -53,6 +57,16 @@ function Brand() {
         <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 10, letterSpacing: "0.06em", color: BLUE_SOFT, textTransform: "uppercase" }}>Instituto Índice e Desenvolvimento do ABC</div>
       </div>
     </div>
+  );
+}
+
+function HeaderBanner() {
+  return (
+    <img
+      src="/header.png"
+      alt="Instituto Índice e Desenvolvimento do ABC"
+      style={{ width: "100%", height: "auto", display: "block" }}
+    />
   );
 }
 
@@ -125,19 +139,22 @@ function Login({ onLoggedIn }) {
   };
 
   return (
-    <div style={{ maxWidth: 360, margin: "60px auto", padding: "0 20px" }}>
-      <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 22, color: INK, marginBottom: 4 }}>Painel do Índice ABC</h1>
-      <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, marginBottom: 20 }}>Acesso restrito ao administrador do instituto.</p>
-      <form onSubmit={submit}>
-        <Field label="E-mail">
-          <input style={inputStyle} type="email" value={email} onChange={e => setEmail(e.target.value)} required />
-        </Field>
-        <Field label="Senha">
-          <input style={inputStyle} type="password" value={password} onChange={e => setPassword(e.target.value)} required />
-        </Field>
-        {error && <div style={{ color: "#8A3B3B", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, marginBottom: 12 }}>{error}</div>}
-        <Button type="submit" variant="gold" disabled={loading}>{loading ? <Loader2 size={15} className="spin" /> : <Check size={15} />} Entrar</Button>
-      </form>
+    <div>
+      <HeaderBanner />
+      <div style={{ maxWidth: 360, margin: "40px auto 0", padding: "0 20px" }}>
+        <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 22, color: INK, marginBottom: 4 }}>Painel do Índice ABC</h1>
+        <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, marginBottom: 20 }}>Acesso restrito ao administrador do instituto.</p>
+        <form onSubmit={submit}>
+          <Field label="E-mail">
+            <input style={inputStyle} type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+          </Field>
+          <Field label="Senha">
+            <input style={inputStyle} type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+          </Field>
+          {error && <div style={{ color: "#8A3B3B", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, marginBottom: 12 }}>{error}</div>}
+          <Button type="submit" variant="gold" disabled={loading}>{loading ? <Loader2 size={15} className="spin" /> : <Check size={15} />} Entrar</Button>
+        </form>
+      </div>
     </div>
   );
 }
@@ -412,7 +429,9 @@ function RespondSurvey() {
 
   if (submitted) {
     return (
-      <div style={{ maxWidth: 480, margin: "60px auto", padding: "0 20px", textAlign: "center" }}>
+      <div>
+        <HeaderBanner />
+        <div style={{ maxWidth: 480, margin: "40px auto 0", padding: "0 20px 60px", textAlign: "center" }}>
         <div style={{ width: 50, height: 50, borderRadius: "50%", background: "#3E7A52", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}><Check color="#fff" size={24} /></div>
         <h2 style={{ fontFamily: "'Newsreader', serif", fontSize: 22, color: INK }}>Obrigado pela participação</h2>
         <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: BLUE_SOFT, fontSize: 14 }}>
@@ -458,13 +477,60 @@ function RespondSurvey() {
             )}
           </div>
         )}
+
+        {!preview && (
+          <>
+            <div style={{ marginTop: 16, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 18, textAlign: "center" }}>
+              <div style={{ fontFamily: "'Newsreader', serif", fontSize: 15, color: INK, marginBottom: 12 }}>
+                Compartilhe essa pesquisa com seus amigos
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                <Button
+                  variant="gold"
+                  onClick={() => {
+                    const shareUrl = window.location.href;
+                    const text = `Participe da pesquisa "${survey.title}" do Índice ABC:`;
+                    if (navigator.share) {
+                      navigator.share({ title: survey.title, text, url: shareUrl }).catch(() => {});
+                    } else {
+                      window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${shareUrl}`)}`, "_blank");
+                    }
+                  }}
+                >
+                  <Share2 size={14} /> Compartilhar
+                </Button>
+                <Button variant="ghost" onClick={() => navigator.clipboard?.writeText(window.location.href)}>
+                  <Copy size={14} /> Copiar link
+                </Button>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 16, textAlign: "center" }}>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, marginBottom: 10 }}>
+                Siga o Instituto Índice ABC nas redes sociais
+              </div>
+              <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+                <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer"
+                  style={{ width: 38, height: 38, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+                  <Instagram size={18} />
+                </a>
+                <a href={FACEBOOK_URL} target="_blank" rel="noopener noreferrer"
+                  style={{ width: 38, height: 38, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+                  <Facebook size={18} />
+                </a>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: 560, margin: "0 auto", padding: "20px 16px 60px" }}>
-      <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11, color: GOLD, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Índice ABC</div>
+    <div>
+      <HeaderBanner />
+      <div style={{ maxWidth: 560, margin: "0 auto", padding: "20px 16px 60px" }}>
       <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 24, color: INK, margin: "4px 0 6px" }}>{survey.title}</h1>
       {survey.description && <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 12 }}>{survey.description}</p>}
 
@@ -569,6 +635,7 @@ function RespondSurvey() {
       {quotaId && !quotaFull && (
         <Button variant="gold" onClick={submit} disabled={!canSubmit || submitting} style={{ marginTop: 6 }}>{submitting ? <Loader2 size={15} className="spin" /> : <Check size={15} />} Enviar resposta</Button>
       )}
+      </div>
     </div>
   );
 }
@@ -887,8 +954,8 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>
       {globalStyle}
-      <div style={{ borderBottom: `1px solid ${LINE}`, background: "#fff", padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Brand />
+      <HeaderBanner />
+      <div style={{ borderBottom: `1px solid ${LINE}`, background: "#fff", padding: "8px 16px", display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
         <button onClick={() => supabase.auth.signOut()} style={{ background: "none", border: "none", cursor: "pointer", color: BLUE_SOFT, display: "flex", alignItems: "center", gap: 4, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5 }}>
           <LogOut size={14} /> Sair
         </button>
