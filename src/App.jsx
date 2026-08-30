@@ -314,6 +314,24 @@ function RespondSurvey() {
     })();
   }, [surveyId]);
 
+  // Atualiza a cota escolhida quando faixa etária + sexo (duas dimensões) mudam.
+  // Este useEffect precisa ficar ANTES de qualquer retorno condicional (regra dos hooks do React).
+  useEffect(() => {
+    if (!survey) return;
+    const parsed = survey.quotas.map(q => {
+      const parts = (q.label || "").split(" · ");
+      return { ...q, g1: parts[0] || q.label, g2: parts.length > 1 ? parts[1] : null };
+    });
+    const twoDim = parsed.length > 0 && parsed.every(q => q.g2);
+    if (!twoDim) return;
+    if (group1 && group2) {
+      const match = parsed.find(q => q.g1 === group1 && q.g2 === group2);
+      setQuotaId(match ? match.id : null);
+    } else {
+      setQuotaId(null);
+    }
+  }, [group1, group2, survey]);
+
   if (notFound) return <div style={{ padding: 40, textAlign: "center", fontFamily: "'IBM Plex Sans', sans-serif", color: BLUE_SOFT }}>Pesquisa não encontrada.</div>;
   if (!survey) return <div style={{ padding: 40, textAlign: "center", color: BLUE_SOFT }}><Loader2 className="spin" size={20} /></div>;
   if (survey.status === "encerrada" && !preview) {
@@ -342,17 +360,6 @@ function RespondSurvey() {
     if (!q) return false;
     return (counts[q.id] || 0) >= q.target;
   };
-
-  useEffect(() => {
-    if (!isTwoDimensional) return;
-    if (group1 && group2) {
-      const match = parsedQuotas.find(q => q.g1 === group1 && q.g2 === group2);
-      setQuotaId(match ? match.id : null);
-    } else {
-      setQuotaId(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [group1, group2, isTwoDimensional]);
 
   const setAnswer = (qid, val) => setAnswers(a => ({ ...a, [qid]: val }));
   const toggleMulti = (qid, opt) => setAnswers(a => {
