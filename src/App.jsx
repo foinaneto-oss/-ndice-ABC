@@ -1282,15 +1282,50 @@ function PrivacyPolicy() {
 }
 
 // ---------- Survey dashboard (admin) ----------
-function SurveyDashboard({ survey, onBack, onEdit, onDuplicated, onDeleted }) {
+function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDeleted }) {
   const [responses, setResponses] = useState(null);
   const [surveyStatus, setSurveyStatus] = useState(survey.status || "ativa");
   const [statusSaving, setStatusSaving] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [subscriberCount, setSubscriberCount] = useState(null);
+  const [confirmingNotify, setConfirmingNotify] = useState(false);
+  const [notifying, setNotifying] = useState(false);
+  const [notifiedAt, setNotifiedAt] = useState(survey.notified_at || null);
+  const [notifyResult, setNotifyResult] = useState("");
   const publicUrl = `${window.location.origin}${window.location.pathname}?s=${survey.id}`;
   const previewUrl = `${publicUrl}&preview=1`;
+
+  useEffect(() => {
+    (async () => {
+      const { count } = await supabase.from("subscribers").select("id", { count: "exact", head: true });
+      setSubscriberCount(count || 0);
+    })();
+  }, []);
+
+  const notifySubscribers = async () => {
+    setNotifying(true);
+    setNotifyResult("");
+    try {
+      const res = await fetch("/api/notify-subscribers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ surveyId: survey.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setNotifyResult(data.error || "Não foi possível notificar os inscritos.");
+      } else {
+        setNotifiedAt(new Date().toISOString());
+        setNotifyResult(`E-mail enviado para ${data.sent} de ${data.total ?? data.sent} inscritos.`);
+        setConfirmingNotify(false);
+      }
+    } catch {
+      setNotifyResult("Erro de conexão. Tente novamente.");
+    }
+    setNotifying(false);
+  };
 
   const toggleStatus = async () => {
     setStatusSaving(true);
@@ -1378,9 +1413,28 @@ function SurveyDashboard({ survey, onBack, onEdit, onDuplicated, onDeleted }) {
           </Button>
           <Button variant="ghost" onClick={() => navigator.clipboard?.writeText(publicUrl)}><Share2 size={14} /> Copiar link</Button>
           <Button variant="primary" onClick={exportCSV}><Download size={14} /> Exportar CSV</Button>
+          <Button variant="ghost" onClick={() => setConfirmingNotify(true)}>Notificar inscritos</Button>
           <Button variant="danger" onClick={() => setConfirmingDelete(true)}><X size={14} /> Excluir</Button>
         </div>
       </div>
+
+      {confirmingNotify && (
+        <div style={{ background: "#FBF3E4", border: `1px solid ${GOLD_SOFT}`, borderRadius: 10, padding: 16, marginBottom: 18 }}>
+          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 13.5, color: "#8A6416", marginBottom: 6 }}>
+            Enviar e-mail sobre "{survey.title}" para {subscriberCount ?? "…"} inscritos?
+          </div>
+          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: "#8A6416", marginBottom: 12 }}>
+            {notifiedAt ? `Essa pesquisa já foi notificada em ${new Date(notifiedAt).toLocaleString("pt-BR")}. Enviar de novo?` : "Cada inscrito recebe um e-mail individual, com o link da pesquisa."}
+          </div>
+          {notifyResult && (
+            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: INK, marginBottom: 10 }}>{notifyResult}</div>
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button variant="gold" onClick={notifySubscribers} disabled={notifying || !subscriberCount}>{notifying ? <Loader2 size={14} className="spin" /> : null} Sim, enviar agora</Button>
+            <Button variant="ghost" onClick={() => setConfirmingNotify(false)}>Fechar</Button>
+          </div>
+        </div>
+      )}
 
       {confirmingDelete && (
         <div style={{ background: "#FBF0EE", border: "1px solid #E3CBCB", borderRadius: 10, padding: 16, marginBottom: 18 }}>
@@ -1952,6 +2006,7 @@ export default function App() {
       {view === "dashboard" && activeSurvey && (
         <SurveyDashboard
           survey={activeSurvey}
+          session={session}
           onBack={() => setView("list")}
           onEdit={() => setView("create")}
           onDuplicated={(s) => { setActiveSurvey(s); setView("dashboard"); }}
