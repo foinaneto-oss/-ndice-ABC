@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /?home
+Allow: /?about
+Allow: /?partners
+Allow: /?privacy
+Allow: /?points
+Allow: /?s=
+Disallow: /?admin
+
+Sitemap: https://indiceabc.com.br/sitemap.xml
