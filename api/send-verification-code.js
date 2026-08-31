@@ -44,7 +44,7 @@ export default async function handler(req, res) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "Índice ABC <onboarding@resend.dev>",
+          from: "Índice ABC <verificacao@indiceabc.com.br>",
           to: cleanEmail,
           subject: "Seu código de verificação — Índice ABC",
           html: `<p>Seu código de verificação é:</p><h2 style="letter-spacing:4px;">${code}</h2><p>Ele vale por 10 minutos.</p>`,
