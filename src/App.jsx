@@ -127,7 +127,18 @@ function HeaderBanner() {
 
 function PageFooter() {
   return (
-    <div style={{ borderTop: `1px solid ${LINE}`, marginTop: 28, paddingTop: 16, textAlign: "center" }}>
+    <div style={{ borderTop: `1px solid ${LINE}`, marginTop: 28, paddingTop: 18, textAlign: "center" }}>
+      <div style={{ display: "flex", gap: 12, justifyContent: "center", marginBottom: 12 }}>
+        <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" style={{ width: 32, height: 32, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+          <Instagram size={15} />
+        </a>
+        <a href={FACEBOOK_URL} target="_blank" rel="noopener noreferrer" style={{ width: 32, height: 32, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+          <Facebook size={15} />
+        </a>
+      </div>
+      <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT, marginBottom: 12 }}>
+        <a href="mailto:institutoindiceabc@gmail.com" style={{ color: BLUE_SOFT }}>institutoindiceabc@gmail.com</a> · Santo André/SP — Grande ABC Paulista
+      </div>
       <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
         <a href={homePageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Início</a>
         <a href={aboutPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Sobre</a>
@@ -142,18 +153,50 @@ function PageFooter() {
   );
 }
 
-function PublicNav() {
+// Menu lateral no computador (acima de 900px de largura) + navegação
+// compacta no celular. Usa apenas CSS (classes .pl-*) para alternar,
+// sem precisar de JavaScript pra detectar o tamanho da tela.
+function PublicLayout({ children }) {
   const links = [
     { label: "Início", href: homePageUrl() },
     { label: "Sobre", href: aboutPageUrl() },
     { label: "Parceiros", href: partnersPageUrl() },
     { label: "Troque seus pontos", href: pointsPageUrl() },
+    { label: "Política de Privacidade", href: privacyPageUrl() },
   ];
   return (
-    <div style={{ background: "#fff", borderBottom: `1px solid ${LINE}`, padding: "10px 16px", display: "flex", gap: 20, justifyContent: "center", flexWrap: "wrap" }}>
-      {links.map(l => (
-        <a key={l.href} href={l.href} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, fontWeight: 600 }}>{l.label}</a>
-      ))}
+    <div>
+      <HeaderBanner />
+      <div className="pl-mobile-nav" style={{ background: "#fff", borderBottom: `1px solid ${LINE}`, padding: "10px 16px", display: "flex", gap: 20, justifyContent: "center", flexWrap: "wrap" }}>
+        {links.slice(0, 4).map(l => (
+          <a key={l.href} href={l.href} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, fontWeight: 600 }}>{l.label}</a>
+        ))}
+      </div>
+      <div className="pl-shell">
+        <aside className="pl-sidebar" style={{ flexDirection: "column", width: 230, flexShrink: 0, padding: "28px 20px", borderRight: `1px solid ${LINE}`, minHeight: "70vh", background: "#fff" }}>
+          <nav style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 32 }}>
+            {links.map(l => (
+              <a key={l.href} href={l.href} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, fontWeight: 600 }}>{l.label}</a>
+            ))}
+          </nav>
+          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11, color: "#B7AF98", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Contato</div>
+          <a href="mailto:institutoindiceabc@gmail.com" style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, display: "block", marginBottom: 14, wordBreak: "break-word" }}>institutoindiceabc@gmail.com</a>
+          <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+            <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" style={{ width: 30, height: 30, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+              <Instagram size={14} />
+            </a>
+            <a href={FACEBOOK_URL} target="_blank" rel="noopener noreferrer" style={{ width: 30, height: 30, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+              <Facebook size={14} />
+            </a>
+          </div>
+          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: "#B7AF98", lineHeight: 1.6 }}>
+            Instituto Índice e Desenvolvimento do ABC<br />Santo André/SP — Grande ABC Paulista
+          </div>
+        </aside>
+        <div className="pl-content">
+          {children}
+        </div>
+      </div>
     </div>
   );
 }
@@ -418,6 +461,7 @@ function RespondSurvey() {
   const [pointsStatus, setPointsStatus] = useState("idle"); // idle | saving | done | error
   const [pointsError, setPointsError] = useState("");
   const [pointsEarned, setPointsEarned] = useState(0);
+  const [step, setStep] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -430,6 +474,11 @@ function RespondSurvey() {
       setCounts(c);
     })();
   }, [surveyId]);
+
+  // Sempre que a cota (faixa etária/sexo) muda, volta pra primeira pergunta.
+  useEffect(() => {
+    setStep(0);
+  }, [quotaId]);
 
   // Atualiza a cota escolhida quando faixa etária + sexo (duas dimensões) mudam.
   // Este useEffect precisa ficar ANTES de qualquer retorno condicional (regra dos hooks do React).
@@ -488,7 +537,6 @@ function RespondSurvey() {
     if (q.required === false) return true;
     return q.type === "multi" ? (answers[q.id] || []).length > 0 : answers[q.id] && String(answers[q.id]).trim();
   });
-  const answeredCount = survey.questions.filter(q => q.type === "multi" ? (answers[q.id] || []).length > 0 : answers[q.id] && String(answers[q.id]).trim()).length;
 
   const submit = async () => {
     if (!canSubmit || submitting) return;
@@ -530,8 +578,7 @@ function RespondSurvey() {
 
   if (submitted) {
     return (
-      <div>
-        <HeaderBanner />
+      <PublicLayout>
         <div style={{ maxWidth: 480, margin: "40px auto 0", padding: "0 20px 60px", textAlign: "center" }}>
         <div style={{ width: 50, height: 50, borderRadius: "50%", background: "#3E7A52", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}><Check color="#fff" size={24} /></div>
         <h2 style={{ fontFamily: "'Newsreader', serif", fontSize: 22, color: INK }}>Obrigado pela participação</h2>
@@ -680,13 +727,29 @@ function RespondSurvey() {
         )}
         <PageFooter />
       </div>
-      </div>
+      </PublicLayout>
     );
   }
 
+  const currentQuestion = quotaId ? survey.questions[step] : null;
+  const isLastStep = currentQuestion ? step === survey.questions.length - 1 : false;
+  const currentAnswered = currentQuestion
+    ? (currentQuestion.type === "multi" ? (answers[currentQuestion.id] || []).length > 0 : answers[currentQuestion.id] && String(answers[currentQuestion.id]).trim())
+    : false;
+  const canProceed = currentQuestion ? (currentQuestion.required === false || currentAnswered) : false;
+
+  const goNext = () => {
+    if (!canProceed) return;
+    if (isLastStep) submit();
+    else setStep(s => s + 1);
+  };
+  const goBack = () => {
+    if (step === 0) { setQuotaId(null); setGroup1(null); setGroup2(null); }
+    else setStep(s => s - 1);
+  };
+
   return (
-    <div>
-      <HeaderBanner />
+    <PublicLayout>
       <div style={{ maxWidth: 560, margin: "0 auto", padding: "20px 16px 60px" }}>
       <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 24, color: INK, margin: "4px 0 6px" }}>{survey.title}</h1>
       {survey.description && <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 12 }}>{survey.description}</p>}
@@ -698,74 +761,83 @@ function RespondSurvey() {
 
       {quotaId && !quotaFull && (
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: BLUE_SOFT, marginBottom: 4 }}>{answeredCount} de {survey.questions.length} perguntas respondidas</div>
+          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: BLUE_SOFT, marginBottom: 4 }}>Pergunta {step + 1} de {survey.questions.length}</div>
           <div style={{ height: 6, background: "#EDE8DA", borderRadius: 4 }}>
-            <div style={{ height: "100%", width: `${(answeredCount / survey.questions.length) * 100}%`, background: GOLD, borderRadius: 4, transition: "width 0.3s ease" }} />
+            <div style={{ height: "100%", width: `${((step + 1) / survey.questions.length) * 100}%`, background: GOLD, borderRadius: 4, transition: "width 0.3s ease" }} />
           </div>
         </div>
       )}
 
-      <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
-        {isTwoDimensional ? (
-          <>
-            <Field label="Sua faixa etária">
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {group1Options.map(g1 => {
-                  const full = parsedQuotas.filter(q => q.g1 === g1).every(q => (counts[q.id] || 0) >= q.target);
-                  const active = group1 === g1;
-                  return (
-                    <button key={g1} disabled={full} onClick={() => { setGroup1(g1); setGroup2(null); }}
-                      style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, padding: "7px 12px", borderRadius: 20, cursor: full ? "not-allowed" : "pointer", border: `1px solid ${active ? BLUE : LINE}`, background: active ? BLUE : full ? "#EDE8DA" : "#fff", color: active ? "#fff" : full ? "#A79C7E" : INK, textDecoration: full ? "line-through" : "none" }}>{g1}{full ? " · completa" : ""}</button>
-                  );
-                })}
-              </div>
-            </Field>
-            {group1 && (
-              <Field label="Sexo">
+      {!quotaId && (
+        <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
+          {isTwoDimensional ? (
+            <>
+              <Field label="Sua faixa etária">
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {group2Options.map(g2 => {
-                    const full = isFullFor(group1, g2);
-                    const active = group2 === g2;
+                  {group1Options.map(g1 => {
+                    const full = parsedQuotas.filter(q => q.g1 === g1).every(q => (counts[q.id] || 0) >= q.target);
+                    const active = group1 === g1;
                     return (
-                      <button key={g2} disabled={full} onClick={() => setGroup2(g2)}
-                        style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, padding: "7px 12px", borderRadius: 20, cursor: full ? "not-allowed" : "pointer", border: `1px solid ${active ? BLUE : LINE}`, background: active ? BLUE : full ? "#EDE8DA" : "#fff", color: active ? "#fff" : full ? "#A79C7E" : INK, textDecoration: full ? "line-through" : "none" }}>{g2}{full ? " · completa" : ""}</button>
+                      <button key={g1} disabled={full} onClick={() => { setGroup1(g1); setGroup2(null); }}
+                        style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, padding: "10px 16px", borderRadius: 22, cursor: full ? "not-allowed" : "pointer", border: `1px solid ${active ? BLUE : LINE}`, background: active ? BLUE : full ? "#EDE8DA" : "#fff", color: active ? "#fff" : full ? "#A79C7E" : INK, textDecoration: full ? "line-through" : "none" }}>{g1}{full ? " · completa" : ""}</button>
                     );
                   })}
                 </div>
               </Field>
-            )}
-          </>
-        ) : (
-          <Field label="Sua faixa etária">
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {survey.quotas.map(q => {
-                const full = (counts[q.id] || 0) >= q.target;
-                const active = quotaId === q.id;
-                return (
-                  <button key={q.id} disabled={full} onClick={() => setQuotaId(q.id)} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, padding: "7px 12px", borderRadius: 20, cursor: full ? "not-allowed" : "pointer", border: `1px solid ${active ? BLUE : LINE}`, background: active ? BLUE : full ? "#EDE8DA" : "#fff", color: active ? "#fff" : full ? "#A79C7E" : INK, textDecoration: full ? "line-through" : "none" }}>{q.label}{full ? " · completa" : ""}</button>
-                );
-              })}
-            </div>
-          </Field>
-        )}
-      </div>
+              {group1 && (
+                <Field label="Sexo">
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {group2Options.map(g2 => {
+                      const full = isFullFor(group1, g2);
+                      const active = group2 === g2;
+                      return (
+                        <button key={g2} disabled={full} onClick={() => setGroup2(g2)}
+                          style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, padding: "10px 16px", borderRadius: 22, cursor: full ? "not-allowed" : "pointer", border: `1px solid ${active ? BLUE : LINE}`, background: active ? BLUE : full ? "#EDE8DA" : "#fff", color: active ? "#fff" : full ? "#A79C7E" : INK, textDecoration: full ? "line-through" : "none" }}>{g2}{full ? " · completa" : ""}</button>
+                      );
+                    })}
+                  </div>
+                </Field>
+              )}
+            </>
+          ) : (
+            <Field label="Sua faixa etária">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {survey.quotas.map(q => {
+                  const full = (counts[q.id] || 0) >= q.target;
+                  const active = quotaId === q.id;
+                  return (
+                    <button key={q.id} disabled={full} onClick={() => setQuotaId(q.id)} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, padding: "10px 16px", borderRadius: 22, cursor: full ? "not-allowed" : "pointer", border: `1px solid ${active ? BLUE : LINE}`, background: active ? BLUE : full ? "#EDE8DA" : "#fff", color: active ? "#fff" : full ? "#A79C7E" : INK, textDecoration: full ? "line-through" : "none" }}>{q.label}{full ? " · completa" : ""}</button>
+                  );
+                })}
+              </div>
+            </Field>
+          )}
+        </div>
+      )}
 
-      {quotaId && !quotaFull && survey.questions.map((q, qi) => (
-        <div key={q.id} style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 14 }}>
-          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14.5, color: INK, marginBottom: 10 }}>{qi + 1}. {q.text}</div>
-          {q.type === "text" && <textarea style={{ ...inputStyle, minHeight: 60 }} value={answers[q.id] || ""} onChange={e => setAnswer(q.id, e.target.value)} />}
-          {q.type === "single" && q.options.map(opt => (
-            <label key={opt} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: INK, cursor: "pointer" }}>
-              <input type="radio" name={q.id} checked={answers[q.id] === opt} onChange={() => setAnswer(q.id, opt)} />{opt}
+      {quotaId && !quotaFull && currentQuestion && (
+        <div key={currentQuestion.id} className="step-fade" style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 18, marginBottom: 16 }}>
+          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 15.5, color: INK, marginBottom: 14 }}>
+            {currentQuestion.text}
+            {currentQuestion.required === false && <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 400, fontSize: 11.5, color: BLUE_SOFT }}> (opcional)</span>}
+          </div>
+          {currentQuestion.type === "text" && (
+            <textarea style={{ ...inputStyle, minHeight: 80 }} value={answers[currentQuestion.id] || ""} onChange={e => setAnswer(currentQuestion.id, e.target.value)} autoFocus />
+          )}
+          {currentQuestion.type === "single" && currentQuestion.options.map(opt => (
+            <label key={opt} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", marginBottom: 8, borderRadius: 10, border: `1px solid ${answers[currentQuestion.id] === opt ? BLUE : LINE}`, background: answers[currentQuestion.id] === opt ? "#EEF2F6" : "#fff", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 14, color: INK, cursor: "pointer" }}
+              onClick={() => setAnswer(currentQuestion.id, opt)}>
+              <input type="radio" name={currentQuestion.id} checked={answers[currentQuestion.id] === opt} onChange={() => setAnswer(currentQuestion.id, opt)} />{opt}
             </label>
           ))}
-          {q.type === "multi" && q.options.map(opt => (
-            <label key={opt} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: INK, cursor: "pointer" }}>
-              <input type="checkbox" checked={(answers[q.id] || []).includes(opt)} onChange={() => toggleMulti(q.id, opt)} />{opt}
+          {currentQuestion.type === "multi" && currentQuestion.options.map(opt => (
+            <label key={opt} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", marginBottom: 8, borderRadius: 10, border: `1px solid ${(answers[currentQuestion.id] || []).includes(opt) ? BLUE : LINE}`, background: (answers[currentQuestion.id] || []).includes(opt) ? "#EEF2F6" : "#fff", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 14, color: INK, cursor: "pointer" }}
+              onClick={() => toggleMulti(currentQuestion.id, opt)}>
+              <input type="checkbox" checked={(answers[currentQuestion.id] || []).includes(opt)} onChange={() => toggleMulti(currentQuestion.id, opt)} />{opt}
             </label>
           ))}
         </div>
-      ))}
+      )}
 
       {quotaId && quotaFull && (
         <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: "#8A3B3B", background: "#FBF0EE", border: "1px solid #E3CBCB", borderRadius: 8, padding: 12 }}>
@@ -790,12 +862,18 @@ function RespondSurvey() {
         aria-hidden="true"
       />
 
-      {quotaId && !quotaFull && (
-        <Button variant="gold" onClick={submit} disabled={!canSubmit || submitting} style={{ marginTop: 6 }}>{submitting ? <Loader2 size={15} className="spin" /> : <Check size={15} />} Enviar resposta</Button>
+      {quotaId && !quotaFull && currentQuestion && (
+        <div style={{ display: "flex", gap: 10 }}>
+          <Button variant="ghost" onClick={goBack}><ArrowLeft size={14} /> Voltar</Button>
+          <Button variant="gold" onClick={goNext} disabled={!canProceed || submitting} style={{ flex: 1, justifyContent: "center" }}>
+            {submitting ? <Loader2 size={15} className="spin" /> : isLastStep ? <Check size={15} /> : null}
+            {submitting ? "" : isLastStep ? "Enviar resposta" : "Próxima"}
+          </Button>
+        </div>
       )}
       <PageFooter />
       </div>
-    </div>
+    </PublicLayout>
   );
 }
 
@@ -884,9 +962,7 @@ function PointsExchange() {
   };
 
   return (
-    <div>
-      <HeaderBanner />
-      <PublicNav />
+    <PublicLayout>
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "20px 16px 60px" }}>
         <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 24, color: INK, margin: "4px 0 6px" }}>Troque seus pontos</h1>
         <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 20 }}>
@@ -960,11 +1036,10 @@ function PointsExchange() {
           </>
         )}
       </div>
-    </div>
+    </PublicLayout>
   );
 }
 
-// ---------- Privacy Policy (public, standalone page) ----------
 // ---------- Home page (public, standalone) ----------
 function HomePage() {
   const [surveys, setSurveys] = useState(null);
@@ -981,9 +1056,7 @@ function HomePage() {
   }, []);
 
   return (
-    <div>
-      <HeaderBanner />
-      <PublicNav />
+    <PublicLayout>
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
         <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 10 }}>
           Instituto Índice e Desenvolvimento do ABC
@@ -1012,16 +1085,14 @@ function HomePage() {
 
         <PageFooter />
       </div>
-    </div>
+    </PublicLayout>
   );
 }
 
 // ---------- About page (public, standalone) ----------
 function AboutPage() {
   return (
-    <div>
-      <HeaderBanner />
-      <PublicNav />
+    <PublicLayout>
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
         <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 20 }}>Sobre o Instituto</h1>
 
@@ -1054,7 +1125,7 @@ function AboutPage() {
 
         <PageFooter />
       </div>
-    </div>
+    </PublicLayout>
   );
 }
 
@@ -1084,9 +1155,7 @@ function PartnersPage() {
   const partnerNames = partners ? Object.keys(partners) : [];
 
   return (
-    <div>
-      <HeaderBanner />
-      <PublicNav />
+    <PublicLayout>
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
         <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 6 }}>Nossos Parceiros</h1>
         <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 24 }}>
@@ -1110,15 +1179,13 @@ function PartnersPage() {
 
         <PageFooter />
       </div>
-    </div>
+    </PublicLayout>
   );
 }
 
 function PrivacyPolicy() {
   return (
-    <div>
-      <HeaderBanner />
-      <PublicNav />
+    <PublicLayout>
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px 60px" }}>
         <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 4 }}>Política de Privacidade</h1>
         <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT, marginBottom: 24 }}>Instituto Índice e Desenvolvimento do ABC</p>
@@ -1186,7 +1253,7 @@ function PrivacyPolicy() {
 
         <PageFooter />
       </div>
-    </div>
+    </PublicLayout>
   );
 }
 
@@ -1790,6 +1857,20 @@ export default function App() {
       .spin { animation: spin 0.8s linear infinite; }
       @keyframes spin { to { transform: rotate(360deg); } }
       body { margin: 0; }
+
+      .pl-shell { display: block; }
+      .pl-sidebar { display: none; }
+      .pl-mobile-nav { display: block; }
+      .pl-content { min-width: 0; }
+      @media (min-width: 900px) {
+        .pl-shell { display: flex; align-items: flex-start; }
+        .pl-sidebar { display: flex; }
+        .pl-mobile-nav { display: none; }
+        .pl-content { flex: 1; }
+      }
+
+      .step-fade { animation: stepFadeIn 0.25s ease; }
+      @keyframes stepFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
     `}</style>
   );
 
