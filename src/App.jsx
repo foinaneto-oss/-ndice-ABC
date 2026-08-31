@@ -15,6 +15,24 @@ const LINE = "#DCD6C6";
 const INSTAGRAM_URL = "https://instagram.com/indiceabc";
 const FACEBOOK_URL = "https://facebook.com/indiceabc";
 
+// Troque pela sua chave do Google Maps (console.cloud.google.com, com a
+// "Maps JavaScript API" ativada). Sem isso, o mapa de respostas não carrega.
+const GOOGLE_MAPS_API_KEY = "SUA_CHAVE_AQUI";
+
+// As 7 cidades do Grande ABC Paulista — o instituto cobre a região inteira,
+// não só São Caetano do Sul. Cada pesquisa escolhe a sua cidade, e o mapa
+// de respostas usa isso pra geocodificar os bairros certos, sem precisar
+// de nenhuma lista fixa de bairros no código (funciona pra qualquer cidade,
+// inclusive as que ainda não temos pesquisa nenhuma).
+const ABC_CITIES = [
+  "Santo André", "São Bernardo do Campo", "São Caetano do Sul",
+  "Diadema", "Mauá", "Ribeirão Pires", "Rio Grande da Serra",
+];
+
+function normalizeText(s) {
+  return (s || "").toString().trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 const sectionTitleStyle = { fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 17, color: "#0F2E52", marginTop: 22, marginBottom: 6 };
 
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');`;
@@ -321,6 +339,7 @@ function CreateSurvey({ userId, editingSurvey, onCancel, onSave }) {
     editingSurvey?.quotas?.length ? editingSurvey.quotas.map(q => ({ ...q })) : DEFAULT_QUOTAS.map(q => ({ ...q }))
   );
   const [points, setPoints] = useState(editingSurvey?.points ?? 5);
+  const [city, setCity] = useState(editingSurvey?.city || "São Caetano do Sul");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -353,6 +372,7 @@ function CreateSurvey({ userId, editingSurvey, onCancel, onSave }) {
       questions: questions.map(q => ({ ...q, options: q.type === "text" ? [] : q.options.filter(o => o.trim()) })),
       quotas: quotas.map(q => ({ ...q, target: Number(q.target) || 0 })),
       points: Number(points) || 5,
+      city,
     };
     let data, error;
     if (editingSurvey) {
@@ -377,6 +397,12 @@ function CreateSurvey({ userId, editingSurvey, onCancel, onSave }) {
       </Field>
       <Field label="Descrição (opcional)">
         <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} value={description} onChange={e => setDescription(e.target.value)} />
+      </Field>
+
+      <Field label="Cidade do Grande ABC">
+        <select value={city} onChange={e => setCity(e.target.value)} style={{ ...inputStyle, maxWidth: 260 }}>
+          {ABC_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
       </Field>
 
       <Field label="Pontos ao completar a pesquisa">
@@ -1282,7 +1308,7 @@ function PrivacyPolicy() {
 }
 
 // ---------- Survey dashboard (admin) ----------
-function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDeleted }) {
+function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDeleted, onViewMap }) {
   const [responses, setResponses] = useState(null);
   const [surveyStatus, setSurveyStatus] = useState(survey.status || "ativa");
   const [statusSaving, setStatusSaving] = useState(false);
@@ -1343,6 +1369,7 @@ function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDele
       questions: survey.questions,
       quotas: survey.quotas,
       points: survey.points,
+      city: survey.city,
       created_by: survey.created_by,
       status: "ativa",
     }).select().single();
@@ -1414,6 +1441,7 @@ function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDele
           <Button variant="ghost" onClick={() => navigator.clipboard?.writeText(publicUrl)}><Share2 size={14} /> Copiar link</Button>
           <Button variant="primary" onClick={exportCSV}><Download size={14} /> Exportar CSV</Button>
           <Button variant="ghost" onClick={() => setConfirmingNotify(true)}>Notificar inscritos</Button>
+          <Button variant="ghost" onClick={onViewMap}>Ver no mapa</Button>
           <Button variant="danger" onClick={() => setConfirmingDelete(true)}><X size={14} /> Excluir</Button>
         </div>
       </div>
@@ -1908,6 +1936,202 @@ function PointsReport({ onBack }) {
   );
 }
 
+// ---------- Mapa de respostas por bairro (admin) ----------
+let googleMapsLoadPromise = null;
+function loadGoogleMapsScript() {
+  if (googleMapsLoadPromise) return googleMapsLoadPromise;
+  googleMapsLoadPromise = new Promise((resolve, reject) => {
+    if (window.google?.maps) { resolve(window.google); return; }
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}`;
+    script.async = true;
+    script.onload = () => resolve(window.google);
+    script.onerror = () => reject(new Error("Falha ao carregar o Google Maps"));
+    document.head.appendChild(script);
+  });
+  return googleMapsLoadPromise;
+}
+
+function SurveyMapView({ survey, onBack }) {
+  const mapRef = React.useRef(null);
+  const mapInstance = React.useRef(null);
+  const [responses, setResponses] = useState(null);
+  const [questionId, setQuestionId] = useState(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [mapError, setMapError] = useState("");
+  const [geocoding, setGeocoding] = useState(false);
+  const [notFound, setNotFound] = useState(0);
+
+  const candidateQuestions = (survey.questions || []).filter(q => q.type === "text" || q.type === "single");
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("responses").select("answers").eq("survey_id", survey.id);
+      setResponses(data || []);
+    })();
+    // Pré-seleciona automaticamente uma pergunta cujo texto contenha "bairro"
+    const guess = (survey.questions || []).find(q => (q.text || "").toLowerCase().includes("bairro"));
+    if (guess) setQuestionId(guess.id);
+    else if (candidateQuestions[0]) setQuestionId(candidateQuestions[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [survey.id]);
+
+  useEffect(() => {
+    loadGoogleMapsScript()
+      .then(() => setMapReady(true))
+      .catch(() => setMapError("Não foi possível carregar o Google Maps. Confira se a chave de API está configurada."));
+  }, []);
+
+  const counts = {};
+  if (responses && questionId) {
+    responses.forEach(r => {
+      const raw = (r.answers?.[questionId] || "").toString().trim();
+      if (!raw) return;
+      const key = normalizeText(raw);
+      if (!key) return;
+      if (!counts[key]) counts[key] = { label: raw, count: 0 };
+      counts[key].count += 1;
+    });
+  }
+  const sortedNeighborhoods = Object.values(counts).sort((a, b) => b.count - a.count);
+  const maxCount = sortedNeighborhoods.length ? sortedNeighborhoods[0].count : 1;
+  const surveyCity = survey.city || "São Caetano do Sul";
+
+  // Desenha o mapa e os círculos por bairro sempre que os dados ou a pergunta mudam
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || sortedNeighborhoods.length === 0) return;
+    let cancelled = false;
+    let notFoundCount = 0;
+
+    (async () => {
+      setGeocoding(true);
+      const google = window.google;
+      if (!mapInstance.current) {
+        mapInstance.current = new google.maps.Map(mapRef.current, {
+          center: { lat: -23.66, lng: -46.53 }, // centro aproximado do Grande ABC — o mapa ajusta o zoom sozinho depois
+          zoom: 11,
+          mapTypeControl: false,
+          streetViewControl: false,
+        });
+      }
+      const map = mapInstance.current;
+      const geocoder = new google.maps.Geocoder();
+      const bounds = new google.maps.LatLngBounds();
+
+      for (const { label, count } of sortedNeighborhoods) {
+        if (cancelled) return;
+        try {
+          const result = await new Promise((resolve, reject) => {
+            geocoder.geocode({ address: `${label}, ${surveyCity}, SP, Brasil` }, (res, status) => {
+              if (status === "OK" && res[0]) resolve(res[0]);
+              else reject(status);
+            });
+          });
+          const position = result.geometry.location;
+          const radius = 60 + (count / maxCount) * 220;
+          new google.maps.Circle({
+            strokeColor: "#0F2E52",
+            strokeOpacity: 0.7,
+            strokeWeight: 1,
+            fillColor: "#C79A45",
+            fillOpacity: 0.45,
+            map,
+            center: position,
+            radius,
+          });
+          new google.maps.Marker({
+            position,
+            map,
+            label: { text: String(count), color: "#0F2E52", fontWeight: "700", fontSize: "12px" },
+            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0, },
+          });
+          bounds.extend(position);
+        } catch {
+          // Se o Google não conseguir localizar esse texto como bairro real
+          // (erro de digitação, resposta em branco disfarçada, etc.), só pula.
+          notFoundCount += 1;
+        }
+      }
+      if (!cancelled && !bounds.isEmpty()) map.fitBounds(bounds);
+      if (!cancelled) setNotFound(notFoundCount);
+      setGeocoding(false);
+    })();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, questionId, responses]);
+
+  return (
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 16px 60px" }}>
+      <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: BLUE_SOFT, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, cursor: "pointer", marginBottom: 14, padding: 0 }}>
+        <ArrowLeft size={15} /> Voltar
+      </button>
+
+      <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 25, color: INK, marginBottom: 4 }}>Mapa de respostas — {survey.title}</h1>
+      <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: GOLD, marginBottom: 16 }}>{surveyCity}</div>
+
+      {candidateQuestions.length === 0 ? (
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginTop: 16 }}>
+          Essa pesquisa não tem nenhuma pergunta de texto ou escolha única que possa representar um bairro.
+        </div>
+      ) : (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <Field label="Qual pergunta representa o bairro?">
+              <select
+                value={questionId || ""}
+                onChange={e => setQuestionId(e.target.value)}
+                style={{ ...inputStyle, maxWidth: 380 }}
+              >
+                {candidateQuestions.map(q => <option key={q.id} value={q.id}>{q.text}</option>)}
+              </select>
+            </Field>
+          </div>
+
+          {mapError && (
+            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: "#8A3B3B", background: "#FBF0EE", border: "1px solid #E3CBCB", borderRadius: 8, padding: 12, marginBottom: 16 }}>{mapError}</div>
+          )}
+
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <div ref={mapRef} style={{ flex: "2 1 420px", minHeight: 420, borderRadius: 10, border: `1px solid ${LINE}`, background: "#EDE8DA" }}>
+              {!mapReady && !mapError && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 420, color: BLUE_SOFT }}><Loader2 className="spin" size={20} /></div>
+              )}
+            </div>
+
+            <div style={{ flex: "1 1 220px" }}>
+              <div style={{ fontFamily: "'Newsreader', serif", fontSize: 15, fontStyle: "italic", color: INK, marginBottom: 10 }}>
+                Respostas por bairro {geocoding && <Loader2 className="spin" size={12} style={{ marginLeft: 6, verticalAlign: "middle" }} />}
+              </div>
+              {responses === null ? (
+                <Loader2 className="spin" size={16} color={BLUE_SOFT} />
+              ) : sortedNeighborhoods.length === 0 ? (
+                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT }}>Nenhuma resposta reconhecida como bairro ainda.</div>
+              ) : (
+                sortedNeighborhoods.map(({ label, count }) => (
+                  <div key={label} style={{ marginBottom: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: INK }}>
+                      <span>{label}</span><span style={{ fontFamily: "'IBM Plex Mono', monospace", color: BLUE_SOFT }}>{count}</span>
+                    </div>
+                    <div style={{ height: 6, background: "#EDE8DA", borderRadius: 4 }}>
+                      <div style={{ height: "100%", width: `${(count / maxCount) * 100}%`, background: GOLD, borderRadius: 4 }} />
+                    </div>
+                  </div>
+                ))
+              )}
+              {notFound > 0 && (
+                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: "#A79C7E", marginTop: 10 }}>
+                  {notFound} resposta(s) que o Google não conseguiu localizar em {surveyCity} (erro de digitação, resposta fora do padrão, etc.) — continuam contadas na lista, só não aparecem no mapa.
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ---------- App ----------
 export default function App() {
   const isPublic = !!getPublicSurveyId();
@@ -2011,12 +2235,14 @@ export default function App() {
           onEdit={() => setView("create")}
           onDuplicated={(s) => { setActiveSurvey(s); setView("dashboard"); }}
           onDeleted={() => { setActiveSurvey(null); setView("list"); }}
+          onViewMap={() => setView("map")}
         />
       )}
       {view === "subscribers" && <SubscribersView onBack={() => setView("list")} />}
       {view === "rewards" && <RewardsAdmin onBack={() => setView("list")} />}
       {view === "overview" && <OverviewPanel onBack={() => setView("list")} onOpenSurvey={(s) => { setActiveSurvey(s); setView("dashboard"); }} />}
       {view === "pointsreport" && <PointsReport onBack={() => setView("list")} />}
+      {view === "map" && activeSurvey && <SurveyMapView survey={activeSurvey} onBack={() => setView("dashboard")} />}
     </div>
   );
 }
