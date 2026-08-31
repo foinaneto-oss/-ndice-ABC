@@ -56,7 +56,7 @@ export default async function handler(req, res) {
     const durationSeconds = startedAt ? Math.round((Date.now() - startedAt) / 1000) : null;
 
     // Grava a resposta
-    const { error: insertError } = await supabaseAdmin.from("responses").insert({
+    const { data: inserted, error: insertError } = await supabaseAdmin.from("responses").insert({
       survey_id: surveyId,
       quota_id: quotaId,
       answers,
@@ -64,14 +64,14 @@ export default async function handler(req, res) {
       duration_seconds: durationSeconds,
       region,
       country,
-    });
+    }).select("id").single();
 
     if (insertError) throw insertError;
 
     // Registra o IP como "já usado" para essa pesquisa
     await supabaseAdmin.from("response_ips").insert({ survey_id: surveyId, ip_hash: ipHash });
 
-    return res.status(200).json({ success: true });
+    return res.status(200).json({ success: true, responseId: inserted?.id || null });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Erro ao registrar resposta" });
