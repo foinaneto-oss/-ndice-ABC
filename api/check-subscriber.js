@@ -19,6 +19,15 @@ export default async function handler(req, res) {
     }
     const cleanEmail = email.trim().toLowerCase();
 
+    const forwarded = req.headers["x-forwarded-for"];
+    const ip = forwarded ? forwarded.split(",")[0].trim() : req.socket?.remoteAddress || "unknown";
+    const { data: ipOk } = await supabaseAdmin.rpc("check_rate_limit", {
+      p_key: `checksub:ip:${ip}`, p_max: 20, p_window_minutes: 60,
+    });
+    if (!ipOk) {
+      return res.status(429).json({ error: "Muitas tentativas. Aguarde um pouco antes de tentar de novo." });
+    }
+
     const { data, error } = await supabaseAdmin
       .from("subscribers")
       .select("name")
