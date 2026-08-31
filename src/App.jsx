@@ -1361,7 +1361,7 @@ function SurveyDashboard({ survey, onBack, onEdit, onDuplicated, onDeleted }) {
 }
 
 // ---------- List view (admin) ----------
-function SurveyList({ onCreate, onOpen, onViewSubscribers, onViewRewards }) {
+function SurveyList({ onCreate, onOpen, onViewSubscribers, onViewRewards, onViewOverview, onViewPointsReport }) {
   const [surveys, setSurveys] = useState(null);
 
   useEffect(() => {
@@ -1380,7 +1380,9 @@ function SurveyList({ onCreate, onOpen, onViewSubscribers, onViewRewards }) {
           <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, margin: 0 }}>Pesquisas</h1>
           <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT }}>{surveys.length} {surveys.length === 1 ? "pesquisa criada" : "pesquisas criadas"}</div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Button variant="ghost" onClick={onViewOverview}>Visão Geral</Button>
+          <Button variant="ghost" onClick={onViewPointsReport}>Relatório de Pontos</Button>
           <Button variant="ghost" onClick={onViewSubscribers}>Inscritos</Button>
           <Button variant="ghost" onClick={onViewRewards}>Recompensas</Button>
           <Button variant="gold" onClick={onCreate}><Plus size={15} /> Nova pesquisa</Button>
@@ -1579,6 +1581,188 @@ function RewardsAdmin({ onBack }) {
   );
 }
 
+// ---------- Overview panel (admin) ----------
+function OverviewPanel({ onBack, onOpenSurvey }) {
+  const [loading, setLoading] = useState(true);
+  const [surveys, setSurveys] = useState([]);
+  const [responseCounts, setResponseCounts] = useState({});
+  const [totalResponses, setTotalResponses] = useState(0);
+  const [responsesThisMonth, setResponsesThisMonth] = useState(0);
+  const [subscriberCount, setSubscriberCount] = useState(0);
+
+  useEffect(() => {
+    (async () => {
+      const [{ data: surveysData }, { data: responsesData }, { count: subCount }] = await Promise.all([
+        supabase.from("surveys").select("id, title, status, points, quotas, created_at").order("created_at", { ascending: false }),
+        supabase.from("responses").select("survey_id, submitted_at"),
+        supabase.from("subscribers").select("id", { count: "exact", head: true }),
+      ]);
+
+      const counts = {};
+      let thisMonth = 0;
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      (responsesData || []).forEach(r => {
+        counts[r.survey_id] = (counts[r.survey_id] || 0) + 1;
+        if (r.submitted_at && new Date(r.submitted_at) >= monthStart) thisMonth += 1;
+      });
+
+      setSurveys(surveysData || []);
+      setResponseCounts(counts);
+      setTotalResponses((responsesData || []).length);
+      setResponsesThisMonth(thisMonth);
+      setSubscriberCount(subCount || 0);
+      setLoading(false);
+    })();
+  }, []);
+
+  const mostActive = surveys.reduce((best, s) => {
+    const c = responseCounts[s.id] || 0;
+    return !best || c > (responseCounts[best.id] || 0) ? s : best;
+  }, null);
+
+  return (
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "20px 16px 60px" }}>
+      <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: BLUE_SOFT, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, cursor: "pointer", marginBottom: 14, padding: 0 }}>
+        <ArrowLeft size={15} /> Todas as pesquisas
+      </button>
+
+      <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 18 }}>Visão Geral</h1>
+
+      {loading ? <Loader2 className="spin" size={18} color={BLUE_SOFT} /> : (
+        <>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
+            {[
+              ["Pesquisas ativas", surveys.filter(s => s.status !== "encerrada").length],
+              ["Respostas no total", totalResponses],
+              ["Respostas este mês", responsesThisMonth],
+              ["Inscritos", subscriberCount],
+            ].map(([label, value]) => (
+              <div key={label} style={{ flex: "1 1 130px", background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: "12px 16px" }}>
+                <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 22, color: BLUE, fontWeight: 600 }}>{value}</div>
+                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11, color: BLUE_SOFT }}>{label}</div>
+              </div>
+            ))}
+          </div>
+
+          {mostActive && (
+            <div style={{ background: "#FBF3E4", border: `1px solid ${GOLD_SOFT}`, borderRadius: 10, padding: 14, marginBottom: 24, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: "#8A6416" }}>
+              🏆 Pesquisa mais ativa: <strong>{mostActive.title}</strong> ({responseCounts[mostActive.id] || 0} respostas)
+            </div>
+          )}
+
+          <div style={{ fontFamily: "'Newsreader', serif", fontSize: 17, color: INK, marginBottom: 10, fontStyle: "italic" }}>Todas as pesquisas</div>
+          {surveys.length === 0 ? (
+            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT }}>Nenhuma pesquisa criada ainda.</div>
+          ) : surveys.map(s => {
+            const target = (s.quotas || []).reduce((sum, q) => sum + (q.target || 0), 0);
+            const count = responseCounts[s.id] || 0;
+            const pct = target > 0 ? Math.min(100, Math.round((count / target) * 100)) : 0;
+            return (
+              <button key={s.id} onClick={() => onOpenSurvey(s)} style={{ display: "block", width: "100%", textAlign: "left", background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 14, marginBottom: 8, cursor: "pointer" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, fontWeight: 600, color: INK }}>
+                  <span>{s.title}</span>
+                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: BLUE_SOFT, fontWeight: 400 }}>{count}/{target || "—"}</span>
+                </div>
+                <div style={{ height: 6, background: "#EDE8DA", borderRadius: 4, marginTop: 6 }}>
+                  <div style={{ height: "100%", width: `${pct}%`, background: pct >= 100 ? "#3E7A52" : GOLD, borderRadius: 4 }} />
+                </div>
+              </button>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------- Points program report (admin) ----------
+function PointsReport({ onBack }) {
+  const [loading, setLoading] = useState(true);
+  const [totalEarned, setTotalEarned] = useState(0);
+  const [totalRedeemed, setTotalRedeemed] = useState(0);
+  const [outstanding, setOutstanding] = useState(0);
+  const [popularRewards, setPopularRewards] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("points_transactions")
+        .select("type, points, expires_at, reward_id, rewards(name)");
+
+      const now = new Date();
+      let earned = 0, redeemed = 0, activeEarned = 0;
+      const rewardCounts = {};
+
+      (data || []).forEach(tx => {
+        if (tx.type === "earn") {
+          earned += tx.points;
+          if (!tx.expires_at || new Date(tx.expires_at) > now) activeEarned += tx.points;
+        } else if (tx.type === "redeem") {
+          redeemed += tx.points;
+          const name = tx.rewards?.name || "Recompensa removida";
+          rewardCounts[name] = (rewardCounts[name] || 0) + 1;
+        }
+      });
+
+      setTotalEarned(earned);
+      setTotalRedeemed(redeemed);
+      setOutstanding(activeEarned - redeemed);
+      setPopularRewards(Object.entries(rewardCounts).sort((a, b) => b[1] - a[1]));
+      setLoading(false);
+    })();
+  }, []);
+
+  return (
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "20px 16px 60px" }}>
+      <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: BLUE_SOFT, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, cursor: "pointer", marginBottom: 14, padding: 0 }}>
+        <ArrowLeft size={15} /> Todas as pesquisas
+      </button>
+
+      <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 18 }}>Relatório de Pontos</h1>
+
+      {loading ? <Loader2 className="spin" size={18} color={BLUE_SOFT} /> : (
+        <>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
+            {[
+              ["Total distribuído", totalEarned],
+              ["Total resgatado", totalRedeemed],
+              ["Saldo em aberto", outstanding],
+            ].map(([label, value]) => (
+              <div key={label} style={{ flex: "1 1 150px", background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: "12px 16px" }}>
+                <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 22, color: BLUE, fontWeight: 600 }}>{value}</div>
+                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11, color: BLUE_SOFT }}>{label} pts</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ fontFamily: "'Newsreader', serif", fontSize: 17, color: INK, marginBottom: 10, fontStyle: "italic" }}>Recompensas mais resgatadas</div>
+          {popularRewards.length === 0 ? (
+            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT }}>Nenhum resgate registrado ainda.</div>
+          ) : (
+            <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, overflow: "hidden" }}>
+              {popularRewards.map(([name, count], i) => {
+                const max = popularRewards[0][1];
+                return (
+                  <div key={name} style={{ padding: "12px 16px", borderTop: i > 0 ? `1px solid ${LINE}` : "none" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: INK }}>
+                      <span>{name}</span>
+                      <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: BLUE_SOFT }}>{count}x</span>
+                    </div>
+                    <div style={{ height: 6, background: "#EDE8DA", borderRadius: 4, marginTop: 6 }}>
+                      <div style={{ height: "100%", width: `${(count / max) * 100}%`, background: GOLD, borderRadius: 4 }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ---------- App ----------
 export default function App() {
   const isPublic = !!getPublicSurveyId();
@@ -1658,7 +1842,7 @@ export default function App() {
         </button>
       </div>
 
-      {view === "list" && <SurveyList onCreate={() => { setActiveSurvey(null); setView("create"); }} onOpen={(s) => { setActiveSurvey(s); setView("dashboard"); }} onViewSubscribers={() => setView("subscribers")} onViewRewards={() => setView("rewards")} />}
+      {view === "list" && <SurveyList onCreate={() => { setActiveSurvey(null); setView("create"); }} onOpen={(s) => { setActiveSurvey(s); setView("dashboard"); }} onViewSubscribers={() => setView("subscribers")} onViewRewards={() => setView("rewards")} onViewOverview={() => setView("overview")} onViewPointsReport={() => setView("pointsreport")} />}
       {view === "create" && <CreateSurvey userId={session.user.id} editingSurvey={activeSurvey} onCancel={() => setView(activeSurvey ? "dashboard" : "list")} onSave={(s) => { setActiveSurvey(s); setView("dashboard"); }} />}
       {view === "dashboard" && activeSurvey && (
         <SurveyDashboard
@@ -1671,6 +1855,8 @@ export default function App() {
       )}
       {view === "subscribers" && <SubscribersView onBack={() => setView("list")} />}
       {view === "rewards" && <RewardsAdmin onBack={() => setView("list")} />}
+      {view === "overview" && <OverviewPanel onBack={() => setView("list")} onOpenSurvey={(s) => { setActiveSurvey(s); setView("dashboard"); }} />}
+      {view === "pointsreport" && <PointsReport onBack={() => setView("list")} />}
     </div>
   );
 }
