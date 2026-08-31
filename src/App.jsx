@@ -57,9 +57,9 @@ function isPrivacyPage() {
   return params.get("privacy") === "1";
 }
 
-function isHomePage() {
+function isAdminPage() {
   const params = new URLSearchParams(window.location.search);
-  return params.get("home") === "1";
+  return params.get("admin") === "1";
 }
 
 function isAboutPage() {
@@ -81,7 +81,11 @@ function privacyPageUrl() {
 }
 
 function homePageUrl() {
-  return `${window.location.origin}${window.location.pathname}?home=1`;
+  return `${window.location.origin}${window.location.pathname}`;
+}
+
+function adminUrl() {
+  return `${window.location.origin}${window.location.pathname}?admin=1`;
 }
 
 function aboutPageUrl() {
@@ -130,6 +134,9 @@ function PageFooter() {
         <a href={partnersPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Parceiros</a>
         <a href={pointsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Troque seus pontos</a>
         <a href={privacyPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Política de Privacidade</a>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <a href={adminUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 10.5, color: "#B7AF98" }}>Área administrativa</a>
       </div>
     </div>
   );
@@ -1577,19 +1584,19 @@ export default function App() {
   const isPublic = !!getPublicSurveyId();
   const isPoints = isPointsPage();
   const isPrivacy = isPrivacyPage();
-  const isHome = isHomePage();
   const isAbout = isAboutPage();
   const isPartners = isPartnersPage();
+  const isAdmin = isAdminPage();
   const [session, setSession] = useState(undefined); // undefined = carregando
   const [view, setView] = useState("list");
   const [activeSurvey, setActiveSurvey] = useState(null);
 
   useEffect(() => {
-    if (isPublic || isPoints || isPrivacy || isHome || isAbout || isPartners) return;
+    if (!isAdmin) return;
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => sub.subscription.unsubscribe();
-  }, [isPublic, isPoints, isPrivacy, isHome, isAbout, isPartners]);
+  }, [isAdmin]);
 
   const globalStyle = (
     <style>{`
@@ -1617,11 +1624,6 @@ export default function App() {
     return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<PrivacyPolicy /></div>;
   }
 
-  // Página inicial institucional — sem login
-  if (isHome) {
-    return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<HomePage /></div>;
-  }
-
   // Sobre o instituto — sem login
   if (isAbout) {
     return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<AboutPage /></div>;
@@ -1630,6 +1632,12 @@ export default function App() {
   // Nossos parceiros — sem login
   if (isPartners) {
     return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<PartnersPage /></div>;
+  }
+
+  // Qualquer endereço que não seja uma rota conhecida nem o admin
+  // cai na página inicial institucional — inclusive a raiz do site.
+  if (!isAdmin) {
+    return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<HomePage /></div>;
   }
 
   if (session === undefined) {
