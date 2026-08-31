@@ -23,6 +23,19 @@ export default async function handler(req, res) {
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    const forwarded = req.headers["x-forwarded-for"];
+    const ip = forwarded ? forwarded.split(",")[0].trim() : req.socket?.remoteAddress || "unknown";
+
+    const { data: emailOk } = await supabaseAdmin.rpc("check_rate_limit", {
+      p_key: `code:email:${cleanEmail}`, p_max: 5, p_window_minutes: 60,
+    });
+    const { data: ipOk } = await supabaseAdmin.rpc("check_rate_limit", {
+      p_key: `code:ip:${ip}`, p_max: 8, p_window_minutes: 60,
+    });
+    if (!emailOk || !ipOk) {
+      return res.status(429).json({ error: "Muitas tentativas. Aguarde um pouco antes de tentar de novo." });
+    }
+
     const code = generateCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutos
 
