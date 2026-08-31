@@ -535,12 +535,14 @@ function RespondSurvey() {
   const [startedAt] = useState(() => Date.now());
   const [responseId, setResponseId] = useState(null);
   const [honeypot, setHoneypot] = useState("");
-  const [subscribeData, setSubscribeData] = useState({ name: "", ddd: "", phone: "", email: "", city: "" });
-  const [subscribeStatus, setSubscribeStatus] = useState("idle"); // idle | saving | done
-  const [pointsEmail, setPointsEmail] = useState("");
-  const [pointsStatus, setPointsStatus] = useState("idle"); // idle | saving | done | error
-  const [pointsError, setPointsError] = useState("");
-  const [pointsEarned, setPointsEarned] = useState(0);
+  const [claimStep, setClaimStep] = useState("email"); // email | newUser | done
+  const [claimEmail, setClaimEmail] = useState("");
+  const [checkingEmail, setCheckingEmail] = useState(false);
+  const [existingName, setExistingName] = useState(null);
+  const [newUserData, setNewUserData] = useState({ name: "", ddd: "", phone: "", city: "" });
+  const [claimSubmitting, setClaimSubmitting] = useState(false);
+  const [claimError, setClaimError] = useState("");
+  const [claimResult, setClaimResult] = useState(null); // { surveyPoints, bonus, totalPoints, isNew }
   const [step, setStep] = useState(0);
 
   useEffect(() => {
@@ -667,94 +669,121 @@ function RespondSurvey() {
         </p>
         {!preview && (
           <div style={{ marginTop: 24, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 18, textAlign: "left" }}>
-            {subscribeStatus === "done" ? (
+            {claimStep === "done" ? (
               <div style={{ textAlign: "center", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: "#3E7A52" }}>
                 <Check size={18} style={{ verticalAlign: "middle", marginRight: 6 }} />
-                Inscrição recebida! Boa sorte 🍀
+                {claimResult?.bonus > 0
+                  ? <>+{claimResult.totalPoints} pontos ({claimResult.bonus} de boas-vindas + {claimResult.surveyPoints} desta pesquisa)!</>
+                  : <>+{claimResult?.totalPoints} pontos creditados!</>
+                }{" "}
+                Acesse <a href={pointsPageUrl()} style={{ color: "#3E7A52", textDecoration: "underline", fontWeight: 600 }}>Troque seus pontos</a> pra ver seu saldo.
               </div>
             ) : (
               <>
                 <div style={{ fontFamily: "'Newsreader', serif", fontSize: 15, color: INK, marginBottom: 4, textAlign: "center" }}>
-                  Se inscreva e participe das nossas pesquisas e ganhe prêmios e vouchers
+                  Cadastre-se e acumule pontos
                 </div>
-                <div style={{ marginTop: 12 }}>
-                  <input style={{ ...inputStyle, marginBottom: 8 }} placeholder="Nome" value={subscribeData.name} onChange={e => setSubscribeData(d => ({ ...d, name: e.target.value }))} />
-                  <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                    <input style={{ ...inputStyle, width: 60 }} placeholder="DDD" maxLength={2} value={subscribeData.ddd} onChange={e => setSubscribeData(d => ({ ...d, ddd: e.target.value.replace(/\D/g, "") }))} />
-                    <input style={{ ...inputStyle, flex: 1 }} placeholder="Telefone" value={subscribeData.phone} onChange={e => setSubscribeData(d => ({ ...d, phone: e.target.value }))} />
-                  </div>
-                  <input style={{ ...inputStyle, marginBottom: 8 }} type="email" placeholder="E-mail" value={subscribeData.email} onChange={e => setSubscribeData(d => ({ ...d, email: e.target.value }))} />
-                  <input style={{ ...inputStyle, marginBottom: 12 }} placeholder="Cidade" value={subscribeData.city} onChange={e => setSubscribeData(d => ({ ...d, city: e.target.value }))} />
-                  <Button variant="gold" style={{ width: "100%", justifyContent: "center" }} disabled={subscribeStatus === "saving" || !subscribeData.name.trim()}
-                    onClick={async () => {
-                      setSubscribeStatus("saving");
-                      const { error } = await supabase.from("subscribers").insert({
-                        survey_id: survey.id,
-                        name: subscribeData.name.trim(),
-                        ddd: subscribeData.ddd.trim(),
-                        phone: subscribeData.phone.trim(),
-                        email: subscribeData.email.trim(),
-                        city: subscribeData.city.trim(),
-                      });
-                      setSubscribeStatus(error ? "idle" : "done");
-                    }}>
-                    {subscribeStatus === "saving" ? <Loader2 size={15} className="spin" /> : "Quero participar"}
-                  </Button>
+                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT, marginBottom: 12, textAlign: "center" }}>
+                  Ganhe {survey.points || 5} pontos por essa pesquisa, trocáveis por vouchers e descontos.
+                  {claimStep === "email" && " Novo por aqui? Ganhe +5 pontos de boas-vindas."}
                 </div>
-              </>
-            )}
-          </div>
-        )}
 
-        {!preview && (
-          <div style={{ marginTop: 16, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 18, textAlign: "left" }}>
-            {pointsStatus === "done" ? (
-              <div style={{ textAlign: "center", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: "#3E7A52" }}>
-                <Check size={18} style={{ verticalAlign: "middle", marginRight: 6 }} />
-                +{pointsEarned} pontos creditados! Acesse{" "}
-                <a href={pointsPageUrl()} style={{ color: "#3E7A52", textDecoration: "underline", fontWeight: 600 }}>Troque seus pontos</a>{" "}
-                pra ver seu saldo.
-              </div>
-            ) : (
-              <>
-                <div style={{ fontFamily: "'Newsreader', serif", fontSize: 15, color: INK, marginBottom: 4, textAlign: "center" }}>
-                  Ganhe {survey.points || 5} pontos por responder essa pesquisa
-                </div>
-                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT, marginBottom: 10, textAlign: "center" }}>
-                  Troque pontos por vouchers e descontos dos nossos parceiros
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input style={{ ...inputStyle, flex: 1 }} type="email" placeholder="Seu e-mail" value={pointsEmail} onChange={e => setPointsEmail(e.target.value)} />
-                  <Button
-                    variant="gold"
-                    disabled={pointsStatus === "saving" || !pointsEmail.trim() || !responseId}
-                    onClick={async () => {
-                      setPointsStatus("saving"); setPointsError("");
-                      try {
-                        const res = await fetch("/api/earn-points", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ surveyId: survey.id, responseId, email: pointsEmail.trim() }),
-                        });
-                        const data = await res.json();
-                        if (!res.ok) {
-                          setPointsError(data.error || "Não foi possível creditar os pontos.");
-                          setPointsStatus("error");
-                        } else {
-                          setPointsEarned(data.points);
-                          setPointsStatus("done");
+                {claimStep === "email" && (
+                  <div>
+                    <input style={{ ...inputStyle, marginBottom: 10 }} type="email" placeholder="Já é cadastrado? Coloque seu e-mail" value={claimEmail} onChange={e => setClaimEmail(e.target.value)} />
+                    {claimError && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: "#8A3B3B", marginBottom: 8 }}>{claimError}</div>}
+                    <Button variant="gold" style={{ width: "100%", justifyContent: "center" }} disabled={checkingEmail || !claimEmail.trim() || !responseId}
+                      onClick={async () => {
+                        setCheckingEmail(true); setClaimError("");
+                        try {
+                          const res = await fetch("/api/check-subscriber", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ email: claimEmail.trim() }),
+                          });
+                          const data = await res.json();
+                          if (!res.ok) {
+                            setClaimError(data.error || "Não foi possível conferir o e-mail.");
+                          } else if (data.exists) {
+                            setExistingName(data.name);
+                            setClaimStep("existing");
+                          } else {
+                            setClaimStep("newUser");
+                          }
+                        } catch {
+                          setClaimError("Erro de conexão. Tente novamente.");
                         }
-                      } catch {
-                        setPointsError("Erro de conexão. Tente novamente.");
-                        setPointsStatus("error");
-                      }
-                    }}
-                  >
-                    {pointsStatus === "saving" ? <Loader2 size={15} className="spin" /> : "Ganhar pontos"}
-                  </Button>
-                </div>
-                {pointsStatus === "error" && (
-                  <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: "#8A3B3B", marginTop: 8 }}>{pointsError}</div>
+                        setCheckingEmail(false);
+                      }}>
+                      {checkingEmail ? <Loader2 size={15} className="spin" /> : "Continuar"}
+                    </Button>
+                  </div>
+                )}
+
+                {claimStep === "existing" && (
+                  <div>
+                    <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: INK, marginBottom: 10, textAlign: "center" }}>
+                      Bem-vindo de volta{existingName ? `, ${existingName}` : ""}!
+                    </div>
+                    {claimError && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: "#8A3B3B", marginBottom: 8 }}>{claimError}</div>}
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <Button variant="gold" style={{ flex: 1, justifyContent: "center" }} disabled={claimSubmitting}
+                        onClick={async () => {
+                          setClaimSubmitting(true); setClaimError("");
+                          try {
+                            const res = await fetch("/api/earn-points", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ surveyId: survey.id, responseId, email: claimEmail.trim() }),
+                            });
+                            const data = await res.json();
+                            if (!res.ok) setClaimError(data.error || "Não foi possível creditar os pontos.");
+                            else { setClaimResult(data); setClaimStep("done"); }
+                          } catch {
+                            setClaimError("Erro de conexão. Tente novamente.");
+                          }
+                          setClaimSubmitting(false);
+                        }}>
+                        {claimSubmitting ? <Loader2 size={15} className="spin" /> : "Confirmar e ganhar pontos"}
+                      </Button>
+                      <Button variant="ghost" onClick={() => { setClaimStep("email"); setClaimError(""); }}>Trocar e-mail</Button>
+                    </div>
+                  </div>
+                )}
+
+                {claimStep === "newUser" && (
+                  <div>
+                    <input style={{ ...inputStyle, marginBottom: 8 }} placeholder="Nome" value={newUserData.name} onChange={e => setNewUserData(d => ({ ...d, name: e.target.value }))} />
+                    <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                      <input style={{ ...inputStyle, width: 60 }} placeholder="DDD" maxLength={2} value={newUserData.ddd} onChange={e => setNewUserData(d => ({ ...d, ddd: e.target.value.replace(/\D/g, "") }))} />
+                      <input style={{ ...inputStyle, flex: 1 }} placeholder="Telefone" value={newUserData.phone} onChange={e => setNewUserData(d => ({ ...d, phone: e.target.value }))} />
+                    </div>
+                    <input style={{ ...inputStyle, marginBottom: 12 }} placeholder="Cidade" value={newUserData.city} onChange={e => setNewUserData(d => ({ ...d, city: e.target.value }))} />
+                    {claimError && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: "#8A3B3B", marginBottom: 8 }}>{claimError}</div>}
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <Button variant="gold" style={{ flex: 1, justifyContent: "center" }}
+                        disabled={claimSubmitting || !newUserData.name.trim() || !newUserData.ddd.trim() || !newUserData.phone.trim() || !newUserData.city.trim()}
+                        onClick={async () => {
+                          setClaimSubmitting(true); setClaimError("");
+                          try {
+                            const res = await fetch("/api/earn-points", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ surveyId: survey.id, responseId, email: claimEmail.trim(), ...newUserData }),
+                            });
+                            const data = await res.json();
+                            if (!res.ok) setClaimError(data.error || "Não foi possível concluir o cadastro.");
+                            else { setClaimResult(data); setClaimStep("done"); }
+                          } catch {
+                            setClaimError("Erro de conexão. Tente novamente.");
+                          }
+                          setClaimSubmitting(false);
+                        }}>
+                        {claimSubmitting ? <Loader2 size={15} className="spin" /> : "Cadastrar e ganhar pontos"}
+                      </Button>
+                      <Button variant="ghost" onClick={() => { setClaimStep("email"); setClaimError(""); }}>Voltar</Button>
+                    </div>
+                  </div>
                 )}
               </>
             )}
