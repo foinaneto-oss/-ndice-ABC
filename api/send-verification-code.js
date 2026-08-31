@@ -35,8 +35,9 @@ export default async function handler(req, res) {
 
     // Envia o e-mail via Resend
     const resendKey = process.env.RESEND_API_KEY;
+    let emailSent = false;
     if (resendKey) {
-      await fetch("https://api.resend.com/emails", {
+      const emailRes = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${resendKey}`,
@@ -49,11 +50,19 @@ export default async function handler(req, res) {
           html: `<p>Seu código de verificação é:</p><h2 style="letter-spacing:4px;">${code}</h2><p>Ele vale por 10 minutos.</p>`,
         }),
       });
+
+      if (emailRes.ok) {
+        emailSent = true;
+      } else {
+        const errBody = await emailRes.text();
+        // Isso aparece nos "Logs" do projeto no Vercel — útil pra diagnosticar
+        console.error("Resend recusou o envio:", emailRes.status, errBody);
+      }
     } else {
       console.warn("RESEND_API_KEY não configurada — código não foi enviado por e-mail.");
     }
 
-    return res.status(200).json({ success: true });
+    return res.status(200).json({ success: true, emailSent });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Erro ao enviar código" });
