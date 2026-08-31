@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Plus, ArrowLeft, Users, BarChart3, Share2, X, Check, ClipboardList, TrendingUp, Loader2, LogOut, Download, ChevronUp, ChevronDown, Instagram, Facebook, Copy, Bell } from "lucide-react";
+import QRCode from "qrcode";
+import { Plus, ArrowLeft, Users, BarChart3, Share2, X, Check, ClipboardList, TrendingUp, Loader2, LogOut, Download, ChevronUp, ChevronDown, Instagram, Facebook, Copy, Bell, QrCode } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 // ---------- design tokens ----------
@@ -1419,6 +1420,8 @@ function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDele
   const [notifiedAt, setNotifiedAt] = useState(survey.notified_at || null);
   const [notifyResult, setNotifyResult] = useState("");
   const [confirmingPush, setConfirmingPush] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState(null);
+  const [showQr, setShowQr] = useState(false);
   const [pushSending, setPushSending] = useState(false);
   const [pushResult, setPushResult] = useState("");
   const publicUrl = `${window.location.origin}${window.location.pathname}?s=${survey.id}`;
@@ -1430,6 +1433,19 @@ function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDele
       setSubscriberCount(count || 0);
     })();
   }, []);
+
+  const toggleQr = async () => {
+    if (showQr) { setShowQr(false); return; }
+    if (!qrDataUrl) {
+      try {
+        const url = await QRCode.toDataURL(publicUrl, { width: 480, margin: 2, color: { dark: BLUE, light: "#FFFFFF" } });
+        setQrDataUrl(url);
+      } catch {
+        // se falhar, o painel abre sem imagem — o link continua disponível pra copiar
+      }
+    }
+    setShowQr(true);
+  };
 
   const sendPushNotification = async () => {
     setPushSending(true);
@@ -1568,6 +1584,7 @@ function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDele
             {surveyStatus === "ativa" ? "Encerrar coleta" : "Reabrir coleta"}
           </Button>
           <Button variant="ghost" onClick={() => navigator.clipboard?.writeText(publicUrl)}><Share2 size={14} /> Copiar link</Button>
+          <Button variant="ghost" onClick={toggleQr}><QrCode size={14} /> QR Code</Button>
           <Button variant="primary" onClick={exportCSV}><Download size={14} /> Exportar CSV</Button>
           <Button variant="ghost" onClick={() => setConfirmingNotify(true)}>Notificar inscritos</Button>
           <Button variant="ghost" onClick={() => setConfirmingPush(true)}><Bell size={14} /> Notificação push</Button>
@@ -1575,6 +1592,27 @@ function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDele
           <Button variant="danger" onClick={() => setConfirmingDelete(true)}><X size={14} /> Excluir</Button>
         </div>
       </div>
+
+      {showQr && (
+        <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 18, marginBottom: 18, textAlign: "center" }}>
+          {qrDataUrl ? (
+            <>
+              <img src={qrDataUrl} alt={`QR code da pesquisa ${survey.title}`} style={{ width: 220, height: 220, borderRadius: 8 }} />
+              <div style={{ marginTop: 12, display: "flex", gap: 8, justifyContent: "center" }}>
+                <a href={qrDataUrl} download={`qrcode-${survey.title.replace(/\s+/g, "-").toLowerCase()}.png`}>
+                  <Button variant="gold"><Download size={14} /> Baixar PNG</Button>
+                </a>
+                <Button variant="ghost" onClick={() => setShowQr(false)}>Fechar</Button>
+              </div>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: BLUE_SOFT, marginTop: 10 }}>
+                Pronto pra imprimir e colar em comércios, cartazes e eventos.
+              </div>
+            </>
+          ) : (
+            <Loader2 className="spin" size={20} color={BLUE_SOFT} />
+          )}
+        </div>
+      )}
 
       {confirmingNotify && (
         <div style={{ background: "#FBF3E4", border: `1px solid ${GOLD_SOFT}`, borderRadius: 10, padding: 16, marginBottom: 18 }}>
