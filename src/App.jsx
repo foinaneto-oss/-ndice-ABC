@@ -17,7 +17,7 @@ const FACEBOOK_URL = "https://facebook.com/indiceabc";
 
 // Troque pela sua chave do Google Maps (console.cloud.google.com, com a
 // "Maps JavaScript API" ativada). Sem isso, o mapa de respostas não carrega.
-const GOOGLE_MAPS_API_KEY = "SUA_CHAVE_AQUI";
+const GOOGLE_MAPS_API_KEY = "AIzaSyDWn_nd7Ch0F3Yiugxm70Ud-2GrAzcMvVE";
 
 // As 7 cidades do Grande ABC Paulista — o instituto cobre a região inteira,
 // não só São Caetano do Sul. Cada pesquisa escolhe a sua cidade, e o mapa
