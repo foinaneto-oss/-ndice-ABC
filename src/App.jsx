@@ -115,6 +115,24 @@ function Brand() {
   );
 }
 
+// Atualiza o título da aba e a descrição (meta tag) conforme a página —
+// ajuda o Google a diferenciar as páginas, já que é tudo a mesma "URL raiz" técnica.
+function PageMeta({ title, description }) {
+  useEffect(() => {
+    document.title = title ? `${title} · Índice ABC` : "Índice ABC";
+    if (description) {
+      let tag = document.querySelector('meta[name="description"]');
+      if (!tag) {
+        tag = document.createElement("meta");
+        tag.setAttribute("name", "description");
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute("content", description);
+    }
+  }, [title, description]);
+  return null;
+}
+
 function HeaderBanner() {
   return (
     <img
@@ -750,6 +768,7 @@ function RespondSurvey() {
 
   return (
     <PublicLayout>
+      <PageMeta title={survey.title} description={survey.description || `Participe da pesquisa "${survey.title}" do Índice ABC.`} />
       <div style={{ maxWidth: 560, margin: "0 auto", padding: "20px 16px 60px" }}>
       <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 24, color: INK, margin: "4px 0 6px" }}>{survey.title}</h1>
       {survey.description && <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 12 }}>{survey.description}</p>}
@@ -963,6 +982,7 @@ function PointsExchange() {
 
   return (
     <PublicLayout>
+      <PageMeta title="Troque seus pontos" description="Confira seu saldo de pontos e troque por vouchers dos parceiros do Índice ABC." />
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "20px 16px 60px" }}>
         <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 24, color: INK, margin: "4px 0 6px" }}>Troque seus pontos</h1>
         <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 20 }}>
@@ -1057,6 +1077,7 @@ function HomePage() {
 
   return (
     <PublicLayout>
+      <PageMeta title="Início" description="Instituto Índice e Desenvolvimento do ABC — pesquisas e índices estatisticamente rigorosos sobre o Grande ABC Paulista." />
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
         <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 10 }}>
           Instituto Índice e Desenvolvimento do ABC
@@ -1093,6 +1114,7 @@ function HomePage() {
 function AboutPage() {
   return (
     <PublicLayout>
+      <PageMeta title="Sobre" description="Conheça a missão, a metodologia e a natureza jurídica do Instituto Índice e Desenvolvimento do ABC." />
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
         <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 20 }}>Sobre o Instituto</h1>
 
@@ -1156,6 +1178,7 @@ function PartnersPage() {
 
   return (
     <PublicLayout>
+      <PageMeta title="Parceiros" description="Empresas e comércios parceiros do programa de pontos do Índice ABC." />
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
         <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 6 }}>Nossos Parceiros</h1>
         <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 24 }}>
@@ -1186,6 +1209,7 @@ function PartnersPage() {
 function PrivacyPolicy() {
   return (
     <PublicLayout>
+      <PageMeta title="Política de Privacidade" description="Como o Instituto Índice e Desenvolvimento do ABC trata os dados pessoais coletados em pesquisas e cadastros." />
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px 60px" }}>
         <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 4 }}>Política de Privacidade</h1>
         <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT, marginBottom: 24 }}>Instituto Índice e Desenvolvimento do ABC</p>
