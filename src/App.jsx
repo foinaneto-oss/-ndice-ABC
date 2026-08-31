@@ -57,12 +57,43 @@ function isPrivacyPage() {
   return params.get("privacy") === "1";
 }
 
+function isHomePage() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("home") === "1";
+}
+
+function isAboutPage() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("about") === "1";
+}
+
+function isPartnersPage() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("partners") === "1";
+}
+
 function pointsPageUrl() {
   return `${window.location.origin}${window.location.pathname}?points=1`;
 }
 
 function privacyPageUrl() {
   return `${window.location.origin}${window.location.pathname}?privacy=1`;
+}
+
+function homePageUrl() {
+  return `${window.location.origin}${window.location.pathname}?home=1`;
+}
+
+function aboutPageUrl() {
+  return `${window.location.origin}${window.location.pathname}?about=1`;
+}
+
+function partnersPageUrl() {
+  return `${window.location.origin}${window.location.pathname}?partners=1`;
+}
+
+function surveyPublicUrl(id) {
+  return `${window.location.origin}${window.location.pathname}?s=${id}`;
 }
 
 // ---------- shared bits ----------
@@ -94,9 +125,28 @@ function PageFooter() {
   return (
     <div style={{ borderTop: `1px solid ${LINE}`, marginTop: 28, paddingTop: 16, textAlign: "center" }}>
       <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
+        <a href={homePageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Início</a>
+        <a href={aboutPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Sobre</a>
+        <a href={partnersPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Parceiros</a>
         <a href={pointsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Troque seus pontos</a>
         <a href={privacyPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Política de Privacidade</a>
       </div>
+    </div>
+  );
+}
+
+function PublicNav() {
+  const links = [
+    { label: "Início", href: homePageUrl() },
+    { label: "Sobre", href: aboutPageUrl() },
+    { label: "Parceiros", href: partnersPageUrl() },
+    { label: "Troque seus pontos", href: pointsPageUrl() },
+  ];
+  return (
+    <div style={{ background: "#fff", borderBottom: `1px solid ${LINE}`, padding: "10px 16px", display: "flex", gap: 20, justifyContent: "center", flexWrap: "wrap" }}>
+      {links.map(l => (
+        <a key={l.href} href={l.href} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, fontWeight: 600 }}>{l.label}</a>
+      ))}
     </div>
   );
 }
@@ -829,6 +879,7 @@ function PointsExchange() {
   return (
     <div>
       <HeaderBanner />
+      <PublicNav />
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "20px 16px 60px" }}>
         <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 24, color: INK, margin: "4px 0 6px" }}>Troque seus pontos</h1>
         <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 20 }}>
@@ -907,10 +958,160 @@ function PointsExchange() {
 }
 
 // ---------- Privacy Policy (public, standalone page) ----------
+// ---------- Home page (public, standalone) ----------
+function HomePage() {
+  const [surveys, setSurveys] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("surveys")
+        .select("id, title, description, points")
+        .eq("status", "ativa")
+        .order("created_at", { ascending: false });
+      setSurveys(data || []);
+    })();
+  }, []);
+
+  return (
+    <div>
+      <HeaderBanner />
+      <PublicNav />
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
+        <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 10 }}>
+          Instituto Índice e Desenvolvimento do ABC
+        </h1>
+        <p style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 16, color: BLUE_SOFT, lineHeight: 1.6, marginBottom: 28 }}>
+          Gerar conhecimento estatisticamente rigoroso sobre a realidade do Grande ABC, para orientar decisões
+          públicas, privadas e comunitárias com dados confiáveis.
+        </p>
+
+        <h3 style={sectionTitleStyle}>Pesquisas ativas</h3>
+        {surveys === null ? (
+          <Loader2 className="spin" size={18} color={BLUE_SOFT} />
+        ) : surveys.length === 0 ? (
+          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, padding: "16px 0" }}>
+            Nenhuma pesquisa aberta para participação no momento. Volte em breve!
+          </div>
+        ) : (
+          surveys.map(s => (
+            <a key={s.id} href={surveyPublicUrl(s.id)} style={{ display: "block", background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 10, textDecoration: "none" }}>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14.5, color: INK }}>{s.title}</div>
+              {s.description && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, marginTop: 3 }}>{s.description}</div>}
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: GOLD, marginTop: 6 }}>Ganhe {s.points || 5} pontos ao responder →</div>
+            </a>
+          ))
+        )}
+
+        <PageFooter />
+      </div>
+    </div>
+  );
+}
+
+// ---------- About page (public, standalone) ----------
+function AboutPage() {
+  return (
+    <div>
+      <HeaderBanner />
+      <PublicNav />
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
+        <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 20 }}>Sobre o Instituto</h1>
+
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 14, color: INK, lineHeight: 1.7 }}>
+          <p>
+            O <strong>Instituto Índice e Desenvolvimento do ABC (IIDABC)</strong> é uma associação civil sem fins
+            econômicos dedicada à produção de índices, pesquisas e diagnósticos estatísticos sobre os municípios
+            do Grande ABC Paulista, com atuação inicial concentrada em São Caetano do Sul.
+          </p>
+          <p>
+            Nossa missão é preencher uma lacuna real: decisões sobre segurança, mobilidade, comércio local e
+            qualidade de vida na região frequentemente carecem de dados primários, atualizados e
+            metodologicamente sólidos. O IIDABC nasce para produzir esse conhecimento com rigor científico —
+            amostragem estatisticamente representativa, baseada em dados do Censo IBGE, com margens de erro e
+            níveis de confiança declarados em cada pesquisa publicada.
+          </p>
+          <p>
+            Acreditamos que dados confiáveis fortalecem o debate público. Por isso, os resultados das pesquisas
+            do Instituto são disponibilizados à imprensa, ao poder público, a empresas e à sociedade civil,
+            contribuindo para decisões mais informadas em toda a região do ABC.
+          </p>
+
+          <h3 style={sectionTitleStyle}>Dados institucionais</h3>
+          <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: BLUE_SOFT, lineHeight: 1.9 }}>
+            Natureza jurídica: Associação civil de direito privado, sem fins econômicos<br />
+            Sede: Santo André/SP — Grande ABC Paulista<br />
+            Contato: institutoindiceabc@gmail.com
+          </p>
+        </div>
+
+        <PageFooter />
+      </div>
+    </div>
+  );
+}
+
+// ---------- Partners page (public, standalone) ----------
+function PartnersPage() {
+  const [partners, setPartners] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("rewards")
+        .select("partner_name, name")
+        .eq("active", true)
+        .not("partner_name", "is", null);
+
+      const grouped = {};
+      (data || []).forEach(r => {
+        const key = r.partner_name.trim();
+        if (!key) return;
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(r.name);
+      });
+      setPartners(grouped);
+    })();
+  }, []);
+
+  const partnerNames = partners ? Object.keys(partners) : [];
+
+  return (
+    <div>
+      <HeaderBanner />
+      <PublicNav />
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
+        <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 6 }}>Nossos Parceiros</h1>
+        <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 24 }}>
+          Empresas e comércios que oferecem vouchers e descontos pelo programa de pontos do Índice ABC.
+        </p>
+
+        {partners === null ? (
+          <Loader2 className="spin" size={18} color={BLUE_SOFT} />
+        ) : partnerNames.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "40px 20px", border: `1px dashed ${LINE}`, borderRadius: 12, color: BLUE_SOFT, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5 }}>
+            Em breve, novos parceiros por aqui.
+          </div>
+        ) : (
+          partnerNames.map(name => (
+            <div key={name} style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 10 }}>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 15, color: INK }}>{name}</div>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: GOLD, marginTop: 4 }}>{partners[name].join(" · ")}</div>
+            </div>
+          ))
+        )}
+
+        <PageFooter />
+      </div>
+    </div>
+  );
+}
+
 function PrivacyPolicy() {
   return (
     <div>
       <HeaderBanner />
+      <PublicNav />
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px 60px" }}>
         <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 4 }}>Política de Privacidade</h1>
         <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT, marginBottom: 24 }}>Instituto Índice e Desenvolvimento do ABC</p>
@@ -1376,16 +1577,19 @@ export default function App() {
   const isPublic = !!getPublicSurveyId();
   const isPoints = isPointsPage();
   const isPrivacy = isPrivacyPage();
+  const isHome = isHomePage();
+  const isAbout = isAboutPage();
+  const isPartners = isPartnersPage();
   const [session, setSession] = useState(undefined); // undefined = carregando
   const [view, setView] = useState("list");
   const [activeSurvey, setActiveSurvey] = useState(null);
 
   useEffect(() => {
-    if (isPublic || isPoints || isPrivacy) return;
+    if (isPublic || isPoints || isPrivacy || isHome || isAbout || isPartners) return;
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => sub.subscription.unsubscribe();
-  }, [isPublic, isPoints, isPrivacy]);
+  }, [isPublic, isPoints, isPrivacy, isHome, isAbout, isPartners]);
 
   const globalStyle = (
     <style>{`
@@ -1411,6 +1615,21 @@ export default function App() {
   // Política de Privacidade — sem login
   if (isPrivacy) {
     return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<PrivacyPolicy /></div>;
+  }
+
+  // Página inicial institucional — sem login
+  if (isHome) {
+    return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<HomePage /></div>;
+  }
+
+  // Sobre o instituto — sem login
+  if (isAbout) {
+    return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<AboutPage /></div>;
+  }
+
+  // Nossos parceiros — sem login
+  if (isPartners) {
+    return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<PartnersPage /></div>;
   }
 
   if (session === undefined) {
