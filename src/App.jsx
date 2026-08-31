@@ -15,6 +15,8 @@ const LINE = "#DCD6C6";
 const INSTAGRAM_URL = "https://instagram.com/indiceabc";
 const FACEBOOK_URL = "https://facebook.com/indiceabc";
 
+const sectionTitleStyle = { fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 17, color: "#0F2E52", marginTop: 22, marginBottom: 6 };
+
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');`;
 
 const DEFAULT_QUOTAS = [
@@ -50,6 +52,19 @@ function isPointsPage() {
   return params.get("points") === "1";
 }
 
+function isPrivacyPage() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("privacy") === "1";
+}
+
+function pointsPageUrl() {
+  return `${window.location.origin}${window.location.pathname}?points=1`;
+}
+
+function privacyPageUrl() {
+  return `${window.location.origin}${window.location.pathname}?privacy=1`;
+}
+
 // ---------- shared bits ----------
 function Brand() {
   return (
@@ -72,6 +87,17 @@ function HeaderBanner() {
       alt="Instituto Índice e Desenvolvimento do ABC"
       style={{ width: "100%", height: "auto", display: "block" }}
     />
+  );
+}
+
+function PageFooter() {
+  return (
+    <div style={{ borderTop: `1px solid ${LINE}`, marginTop: 28, paddingTop: 16, textAlign: "center" }}>
+      <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
+        <a href={pointsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Troque seus pontos</a>
+        <a href={privacyPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Política de Privacidade</a>
+      </div>
+    </div>
   );
 }
 
@@ -501,7 +527,9 @@ function RespondSurvey() {
             {pointsStatus === "done" ? (
               <div style={{ textAlign: "center", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: "#3E7A52" }}>
                 <Check size={18} style={{ verticalAlign: "middle", marginRight: 6 }} />
-                +{pointsEarned} pontos creditados! Acesse "Troque seus pontos" pra ver seu saldo.
+                +{pointsEarned} pontos creditados! Acesse{" "}
+                <a href={pointsPageUrl()} style={{ color: "#3E7A52", textDecoration: "underline", fontWeight: 600 }}>Troque seus pontos</a>{" "}
+                pra ver seu saldo.
               </div>
             ) : (
               <>
@@ -593,6 +621,7 @@ function RespondSurvey() {
             </div>
           </>
         )}
+        <PageFooter />
       </div>
       </div>
     );
@@ -606,7 +635,8 @@ function RespondSurvey() {
       {survey.description && <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 12 }}>{survey.description}</p>}
 
       <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: BLUE_SOFT, background: "#F1EEE3", border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px", marginBottom: 16 }}>
-        Suas respostas são anônimas e usadas apenas para fins de pesquisa do Instituto Índice e Desenvolvimento do ABC, conforme a LGPD.
+        Suas respostas são anônimas e usadas apenas para fins de pesquisa do Instituto Índice e Desenvolvimento do ABC, conforme nossa{" "}
+        <a href={privacyPageUrl()} style={{ color: BLUE, fontWeight: 600 }}>Política de Privacidade</a>.
       </div>
 
       {quotaId && !quotaFull && (
@@ -706,6 +736,7 @@ function RespondSurvey() {
       {quotaId && !quotaFull && (
         <Button variant="gold" onClick={submit} disabled={!canSubmit || submitting} style={{ marginTop: 6 }}>{submitting ? <Loader2 size={15} className="spin" /> : <Check size={15} />} Enviar resposta</Button>
       )}
+      <PageFooter />
       </div>
     </div>
   );
@@ -870,6 +901,82 @@ function PointsExchange() {
             })}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Privacy Policy (public, standalone page) ----------
+function PrivacyPolicy() {
+  return (
+    <div>
+      <HeaderBanner />
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px 60px" }}>
+        <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 4 }}>Política de Privacidade</h1>
+        <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT, marginBottom: 24 }}>Instituto Índice e Desenvolvimento do ABC</p>
+
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 14, color: INK, lineHeight: 1.7 }}>
+          <h3 style={sectionTitleStyle}>1. Quem somos</h3>
+          <p>
+            O Instituto Índice e Desenvolvimento do ABC (IIDABC), associação civil sem fins econômicos com sede
+            na Rua Aguapeí, 339, Santa Maria, Santo André/SP, é o responsável pelo tratamento dos dados pessoais
+            coletados através deste site e de suas pesquisas, nos termos da Lei Geral de Proteção de Dados (Lei
+            13.709/2018 — LGPD).
+          </p>
+
+          <h3 style={sectionTitleStyle}>2. Quais dados coletamos</h3>
+          <ul style={{ paddingLeft: 20 }}>
+            <li><strong>Respostas de pesquisa:</strong> coletadas de forma anônima. Não pedimos nome, CPF ou qualquer identificação pessoal para responder. Registramos apenas faixa etária, sexo, bairro (quando perguntado) e as respostas em si.</li>
+            <li><strong>Endereço IP:</strong> usado apenas para impedir múltiplas respostas da mesma conexão em uma mesma pesquisa, e para estimar a região de origem. Armazenamos uma versão criptografada (hash) do IP, não o IP em texto puro.</li>
+            <li><strong>Dados de inscrição voluntária:</strong> se você optar por se inscrever para sorteios de prêmios ou pelo programa de pontos, coletamos nome, telefone, e-mail e cidade — apenas quando você mesmo os fornece.</li>
+            <li><strong>Dados do programa de pontos:</strong> e-mail, usado para verificar sua identidade por código e manter seu saldo de pontos.</li>
+          </ul>
+
+          <h3 style={sectionTitleStyle}>3. Para que usamos esses dados</h3>
+          <ul style={{ paddingLeft: 20 }}>
+            <li>Produzir os índices e relatórios estatísticos do Instituto</li>
+            <li>Viabilizar sorteios de prêmios e o programa de pontos por participação</li>
+            <li>Prevenir respostas duplicadas e fraudes</li>
+            <li>Cumprir obrigações legais, quando aplicável</li>
+          </ul>
+
+          <h3 style={sectionTitleStyle}>4. Com quem compartilhamos</h3>
+          <p>
+            Não vendemos nem compartilhamos seus dados pessoais com terceiros para fins comerciais. Utilizamos
+            provedores de infraestrutura técnica (hospedagem e banco de dados) para operar o site, que têm acesso
+            aos dados apenas na medida necessária para prestar esse serviço, sob obrigação de confidencialidade.
+          </p>
+
+          <h3 style={sectionTitleStyle}>5. Por quanto tempo guardamos</h3>
+          <p>
+            Respostas de pesquisa são mantidas indefinidamente para fins de pesquisa histórica e comparativa,
+            sempre de forma anônima. Dados de inscrição e do programa de pontos são mantidos enquanto sua
+            participação estiver ativa; pontos não resgatados expiram em 180 dias.
+          </p>
+
+          <h3 style={sectionTitleStyle}>6. Seus direitos</h3>
+          <p>
+            Conforme a LGPD, você pode solicitar a qualquer momento: confirmação de que tratamos seus dados,
+            acesso a eles, correção de dados incompletos ou desatualizados, exclusão de dados fornecidos
+            voluntariamente, e informações sobre o compartilhamento deles. Para exercer esses direitos, entre em
+            contato pelo e-mail{" "}
+            <a href="mailto:institutoindiceabc@gmail.com" style={{ color: BLUE, fontWeight: 600 }}>institutoindiceabc@gmail.com</a>.
+          </p>
+
+          <h3 style={sectionTitleStyle}>7. Segurança</h3>
+          <p>
+            Adotamos medidas técnicas para proteger seus dados, incluindo controle de acesso restrito,
+            criptografia de dados sensíveis e infraestrutura com práticas de segurança reconhecidas no mercado.
+          </p>
+
+          <h3 style={sectionTitleStyle}>8. Alterações nesta política</h3>
+          <p>
+            Esta política pode ser atualizada periodicamente. A data da última atualização estará sempre
+            indicada no topo desta página.
+          </p>
+        </div>
+
+        <PageFooter />
       </div>
     </div>
   );
@@ -1268,16 +1375,17 @@ function RewardsAdmin({ onBack }) {
 export default function App() {
   const isPublic = !!getPublicSurveyId();
   const isPoints = isPointsPage();
+  const isPrivacy = isPrivacyPage();
   const [session, setSession] = useState(undefined); // undefined = carregando
   const [view, setView] = useState("list");
   const [activeSurvey, setActiveSurvey] = useState(null);
 
   useEffect(() => {
-    if (isPublic || isPoints) return;
+    if (isPublic || isPoints || isPrivacy) return;
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => sub.subscription.unsubscribe();
-  }, [isPublic, isPoints]);
+  }, [isPublic, isPoints, isPrivacy]);
 
   const globalStyle = (
     <style>{`
@@ -1298,6 +1406,11 @@ export default function App() {
   // Página pública de troca de pontos — sem login
   if (isPoints) {
     return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<PointsExchange /></div>;
+  }
+
+  // Política de Privacidade — sem login
+  if (isPrivacy) {
+    return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<PrivacyPolicy /></div>;
   }
 
   if (session === undefined) {
