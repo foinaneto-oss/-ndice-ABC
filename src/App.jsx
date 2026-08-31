@@ -45,6 +45,11 @@ function isPreviewMode() {
   return params.get("preview") === "1";
 }
 
+function isPointsPage() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("points") === "1";
+}
+
 // ---------- shared bits ----------
 function Brand() {
   return (
@@ -171,6 +176,7 @@ function CreateSurvey({ userId, editingSurvey, onCancel, onSave }) {
   const [quotas, setQuotas] = useState(
     editingSurvey?.quotas?.length ? editingSurvey.quotas.map(q => ({ ...q })) : DEFAULT_QUOTAS.map(q => ({ ...q }))
   );
+  const [points, setPoints] = useState(editingSurvey?.points ?? 5);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -202,6 +208,7 @@ function CreateSurvey({ userId, editingSurvey, onCancel, onSave }) {
       description: description.trim(),
       questions: questions.map(q => ({ ...q, options: q.type === "text" ? [] : q.options.filter(o => o.trim()) })),
       quotas: quotas.map(q => ({ ...q, target: Number(q.target) || 0 })),
+      points: Number(points) || 5,
     };
     let data, error;
     if (editingSurvey) {
@@ -226,6 +233,11 @@ function CreateSurvey({ userId, editingSurvey, onCancel, onSave }) {
       </Field>
       <Field label="Descrição (opcional)">
         <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} value={description} onChange={e => setDescription(e.target.value)} />
+      </Field>
+
+      <Field label="Pontos ao completar a pesquisa">
+        <input style={{ ...inputStyle, maxWidth: 100, fontFamily: "'IBM Plex Mono', monospace" }} type="number" min="0" value={points} onChange={e => setPoints(e.target.value)} />
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: BLUE_SOFT, marginTop: 4 }}>Sugestão: entre 5 e 10 pontos.</div>
       </Field>
 
       <div style={{ borderTop: `1px solid ${LINE}`, paddingTop: 18, marginTop: 6 }}>
@@ -315,9 +327,14 @@ function RespondSurvey() {
   const [notFound, setNotFound] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [startedAt] = useState(() => Date.now());
+  const [responseId, setResponseId] = useState(null);
   const [honeypot, setHoneypot] = useState("");
   const [subscribeData, setSubscribeData] = useState({ name: "", ddd: "", phone: "", email: "", city: "" });
   const [subscribeStatus, setSubscribeStatus] = useState("idle"); // idle | saving | done
+  const [pointsEmail, setPointsEmail] = useState("");
+  const [pointsStatus, setPointsStatus] = useState("idle"); // idle | saving | done | error
+  const [pointsError, setPointsError] = useState("");
+  const [pointsEarned, setPointsEarned] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -419,6 +436,7 @@ function RespondSurvey() {
       if (!res.ok) {
         setSubmitError(data.error || "Não foi possível enviar sua resposta.");
       } else {
+        setResponseId(data.responseId || null);
         setSubmitted(true);
       }
     } catch (e) {
@@ -473,6 +491,59 @@ function RespondSurvey() {
                     {subscribeStatus === "saving" ? <Loader2 size={15} className="spin" /> : "Quero participar"}
                   </Button>
                 </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {!preview && (
+          <div style={{ marginTop: 16, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 18, textAlign: "left" }}>
+            {pointsStatus === "done" ? (
+              <div style={{ textAlign: "center", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: "#3E7A52" }}>
+                <Check size={18} style={{ verticalAlign: "middle", marginRight: 6 }} />
+                +{pointsEarned} pontos creditados! Acesse "Troque seus pontos" pra ver seu saldo.
+              </div>
+            ) : (
+              <>
+                <div style={{ fontFamily: "'Newsreader', serif", fontSize: 15, color: INK, marginBottom: 4, textAlign: "center" }}>
+                  Ganhe {survey.points || 5} pontos por responder essa pesquisa
+                </div>
+                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT, marginBottom: 10, textAlign: "center" }}>
+                  Troque pontos por vouchers e descontos dos nossos parceiros
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input style={{ ...inputStyle, flex: 1 }} type="email" placeholder="Seu e-mail" value={pointsEmail} onChange={e => setPointsEmail(e.target.value)} />
+                  <Button
+                    variant="gold"
+                    disabled={pointsStatus === "saving" || !pointsEmail.trim() || !responseId}
+                    onClick={async () => {
+                      setPointsStatus("saving"); setPointsError("");
+                      try {
+                        const res = await fetch("/api/earn-points", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ surveyId: survey.id, responseId, email: pointsEmail.trim() }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                          setPointsError(data.error || "Não foi possível creditar os pontos.");
+                          setPointsStatus("error");
+                        } else {
+                          setPointsEarned(data.points);
+                          setPointsStatus("done");
+                        }
+                      } catch {
+                        setPointsError("Erro de conexão. Tente novamente.");
+                        setPointsStatus("error");
+                      }
+                    }}
+                  >
+                    {pointsStatus === "saving" ? <Loader2 size={15} className="spin" /> : "Ganhar pontos"}
+                  </Button>
+                </div>
+                {pointsStatus === "error" && (
+                  <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: "#8A3B3B", marginTop: 8 }}>{pointsError}</div>
+                )}
               </>
             )}
           </div>
@@ -640,6 +711,170 @@ function RespondSurvey() {
   );
 }
 
+// ---------- Points exchange (public, standalone page) ----------
+function PointsExchange() {
+  const [step, setStep] = useState("email"); // email | code | balance
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [token, setToken] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [balance, setBalance] = useState(null);
+  const [rewards, setRewards] = useState(null);
+  const [redeemingId, setRedeemingId] = useState(null);
+  const [redeemMessage, setRedeemMessage] = useState("");
+
+  const loadRewards = useCallback(async () => {
+    const { data } = await supabase.from("rewards").select("*").eq("active", true).order("points_cost", { ascending: true });
+    setRewards(data || []);
+  }, []);
+
+  const loadBalance = useCallback(async (tk) => {
+    const res = await fetch("/api/points-balance", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: tk }),
+    });
+    const data = await res.json();
+    if (res.ok) setBalance(data.balance);
+    return res.ok;
+  }, []);
+
+  const sendCode = async () => {
+    if (!email.trim()) return;
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/send-verification-code", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) setError(data.error || "Não foi possível enviar o código.");
+      else setStep("code");
+    } catch {
+      setError("Erro de conexão. Tente novamente.");
+    }
+    setLoading(false);
+  };
+
+  const confirmCode = async () => {
+    if (!code.trim()) return;
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/verify-code", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email.trim(), code: code.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Código incorreto.");
+      } else {
+        setToken(data.token);
+        await Promise.all([loadBalance(data.token), loadRewards()]);
+        setStep("balance");
+      }
+    } catch {
+      setError("Erro de conexão. Tente novamente.");
+    }
+    setLoading(false);
+  };
+
+  const redeem = async (rewardId) => {
+    setRedeemingId(rewardId); setRedeemMessage(""); setError("");
+    try {
+      const res = await fetch("/api/redeem-reward", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, rewardId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRedeemMessage(data.error || "Não foi possível resgatar.");
+      } else {
+        setBalance(data.newBalance);
+        setRedeemMessage(`Resgatado: ${data.rewardName}! Nossa equipe vai entrar em contato com as instruções.`);
+        await loadRewards();
+      }
+    } catch {
+      setRedeemMessage("Erro de conexão. Tente novamente.");
+    }
+    setRedeemingId(null);
+  };
+
+  return (
+    <div>
+      <HeaderBanner />
+      <div style={{ maxWidth: 480, margin: "0 auto", padding: "20px 16px 60px" }}>
+        <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 24, color: INK, margin: "4px 0 6px" }}>Troque seus pontos</h1>
+        <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 20 }}>
+          Confira seu saldo de pontos ganhos ao responder nossas pesquisas, e troque por vouchers dos nossos parceiros.
+        </p>
+
+        {step === "email" && (
+          <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 18 }}>
+            <Field label="Seu e-mail">
+              <input style={inputStyle} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="seuemail@exemplo.com" />
+            </Field>
+            {error && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: "#8A3B3B", marginBottom: 12 }}>{error}</div>}
+            <Button variant="gold" onClick={sendCode} disabled={loading || !email.trim()}>
+              {loading ? <Loader2 size={15} className="spin" /> : "Enviar código"}
+            </Button>
+          </div>
+        )}
+
+        {step === "code" && (
+          <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 18 }}>
+            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, marginBottom: 12 }}>
+              Enviamos um código de 6 dígitos para <strong>{email}</strong>. Ele vale por 10 minutos.
+            </div>
+            <Field label="Código de verificação">
+              <input style={{ ...inputStyle, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: 4, fontSize: 18, textAlign: "center" }} maxLength={6} value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ""))} placeholder="000000" />
+            </Field>
+            {error && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: "#8A3B3B", marginBottom: 12 }}>{error}</div>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button variant="gold" onClick={confirmCode} disabled={loading || code.length < 6}>
+                {loading ? <Loader2 size={15} className="spin" /> : "Confirmar"}
+              </Button>
+              <Button variant="ghost" onClick={() => { setStep("email"); setCode(""); setError(""); }}>Trocar e-mail</Button>
+            </div>
+          </div>
+        )}
+
+        {step === "balance" && (
+          <>
+            <div style={{ background: BLUE, borderRadius: 10, padding: 20, textAlign: "center", marginBottom: 20 }}>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: GOLD_SOFT, textTransform: "uppercase", letterSpacing: "0.06em" }}>Seu saldo</div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 36, color: "#fff", fontWeight: 600 }}>{balance ?? "…"}</div>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: GOLD_SOFT }}>pontos disponíveis</div>
+            </div>
+
+            {redeemMessage && (
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: redeemMessage.startsWith("Resgatado") ? "#3E7A52" : "#8A3B3B", background: redeemMessage.startsWith("Resgatado") ? "#E5F1E9" : "#FBF0EE", border: `1px solid ${redeemMessage.startsWith("Resgatado") ? "#B9DBC4" : "#E3CBCB"}`, borderRadius: 8, padding: 12, marginBottom: 14 }}>
+                {redeemMessage}
+              </div>
+            )}
+
+            <div style={{ fontFamily: "'Newsreader', serif", fontSize: 17, color: INK, marginBottom: 10, fontStyle: "italic" }}>Recompensas disponíveis</div>
+
+            {rewards === null ? <Loader2 className="spin" size={18} color={BLUE_SOFT} /> : rewards.length === 0 ? (
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, textAlign: "center", padding: 20 }}>Nenhuma recompensa disponível no momento.</div>
+            ) : rewards.map(r => {
+              const canRedeem = balance !== null && balance >= r.points_cost && (r.quantity_available == null || r.quantity_available > 0);
+              return (
+                <div key={r.id} style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                  <div>
+                    <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14, color: INK }}>{r.name}</div>
+                    {r.partner_name && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: GOLD }}>{r.partner_name}</div>}
+                    {r.description && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT, marginTop: 3 }}>{r.description}</div>}
+                    <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: BLUE_SOFT, marginTop: 4 }}>{r.points_cost} pontos</div>
+                  </div>
+                  <Button variant={canRedeem ? "gold" : "ghost"} disabled={!canRedeem || redeemingId === r.id} onClick={() => redeem(r.id)} style={{ flexShrink: 0 }}>
+                    {redeemingId === r.id ? <Loader2 size={14} className="spin" /> : canRedeem ? "Resgatar" : "Saldo insuficiente"}
+                  </Button>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------- Survey dashboard (admin) ----------
 function SurveyDashboard({ survey, onBack, onEdit, onDuplicated, onDeleted }) {
   const [responses, setResponses] = useState(null);
@@ -666,6 +901,7 @@ function SurveyDashboard({ survey, onBack, onEdit, onDuplicated, onDeleted }) {
       description: survey.description,
       questions: survey.questions,
       quotas: survey.quotas,
+      points: survey.points,
       created_by: survey.created_by,
       status: "ativa",
     }).select().single();
@@ -810,7 +1046,7 @@ function SurveyDashboard({ survey, onBack, onEdit, onDuplicated, onDeleted }) {
 }
 
 // ---------- List view (admin) ----------
-function SurveyList({ onCreate, onOpen, onViewSubscribers }) {
+function SurveyList({ onCreate, onOpen, onViewSubscribers, onViewRewards }) {
   const [surveys, setSurveys] = useState(null);
 
   useEffect(() => {
@@ -831,6 +1067,7 @@ function SurveyList({ onCreate, onOpen, onViewSubscribers }) {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <Button variant="ghost" onClick={onViewSubscribers}>Inscritos</Button>
+          <Button variant="ghost" onClick={onViewRewards}>Recompensas</Button>
           <Button variant="gold" onClick={onCreate}><Plus size={15} /> Nova pesquisa</Button>
         </div>
       </div>
@@ -913,19 +1150,134 @@ function SubscribersView({ onBack }) {
   );
 }
 
+// ---------- Rewards catalog (admin) ----------
+function RewardsAdmin({ onBack }) {
+  const [rewards, setRewards] = useState(null);
+  const [form, setForm] = useState(null); // null = fechado; {} = criando; {...} = editando
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from("rewards").select("*").order("created_at", { ascending: false });
+    setRewards(data || []);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const startCreate = () => setForm({ name: "", description: "", partner_name: "", points_cost: 50, quantity_available: "", active: true });
+  const startEdit = (r) => setForm({ ...r, quantity_available: r.quantity_available ?? "" });
+
+  const save = async () => {
+    if (!form.name.trim() || !form.points_cost) return;
+    setSaving(true);
+    const payload = {
+      name: form.name.trim(),
+      description: form.description?.trim() || null,
+      partner_name: form.partner_name?.trim() || null,
+      points_cost: Number(form.points_cost),
+      quantity_available: form.quantity_available === "" ? null : Number(form.quantity_available),
+      active: form.active !== false,
+    };
+    if (form.id) {
+      await supabase.from("rewards").update(payload).eq("id", form.id);
+    } else {
+      await supabase.from("rewards").insert(payload);
+    }
+    setSaving(false);
+    setForm(null);
+    load();
+  };
+
+  const toggleActive = async (r) => {
+    await supabase.from("rewards").update({ active: !r.active }).eq("id", r.id);
+    load();
+  };
+
+  const remove = async (r) => {
+    await supabase.from("rewards").delete().eq("id", r.id);
+    load();
+  };
+
+  return (
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "20px 16px 60px" }}>
+      <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: BLUE_SOFT, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, cursor: "pointer", marginBottom: 14, padding: 0 }}>
+        <ArrowLeft size={15} /> Todas as pesquisas
+      </button>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, margin: 0 }}>Recompensas</h1>
+          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT }}>Catálogo de vouchers trocáveis por pontos</div>
+        </div>
+        <Button variant="gold" onClick={startCreate}><Plus size={15} /> Nova recompensa</Button>
+      </div>
+
+      {form && (
+        <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 18 }}>
+          <Field label="Nome da recompensa">
+            <input style={inputStyle} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ex.: Voucher R$20 na Cafeteria X" />
+          </Field>
+          <Field label="Parceiro (opcional)">
+            <input style={inputStyle} value={form.partner_name || ""} onChange={e => setForm({ ...form, partner_name: e.target.value })} />
+          </Field>
+          <Field label="Descrição (opcional)">
+            <textarea style={{ ...inputStyle, minHeight: 50 }} value={form.description || ""} onChange={e => setForm({ ...form, description: e.target.value })} />
+          </Field>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Field label="Custo em pontos">
+              <input style={{ ...inputStyle, fontFamily: "'IBM Plex Mono', monospace" }} type="number" min="1" value={form.points_cost} onChange={e => setForm({ ...form, points_cost: e.target.value })} />
+            </Field>
+            <Field label="Quantidade (vazio = sem limite)">
+              <input style={{ ...inputStyle, fontFamily: "'IBM Plex Mono', monospace" }} type="number" min="0" value={form.quantity_available} onChange={e => setForm({ ...form, quantity_available: e.target.value })} />
+            </Field>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+            <Button variant="gold" onClick={save} disabled={saving || !form.name.trim()}>{saving ? <Loader2 size={14} className="spin" /> : <Check size={14} />} Salvar</Button>
+            <Button variant="ghost" onClick={() => setForm(null)}>Cancelar</Button>
+          </div>
+        </div>
+      )}
+
+      {rewards === null ? <Loader2 className="spin" size={18} color={BLUE_SOFT} /> : rewards.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "40px 20px", border: `1px dashed ${LINE}`, borderRadius: 12, color: BLUE_SOFT, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5 }}>
+          Nenhuma recompensa cadastrada ainda.
+        </div>
+      ) : rewards.map(r => (
+        <div key={r.id} style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, opacity: r.active ? 1 : 0.55 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14, color: INK }}>{r.name}</div>
+              {!r.active && <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 10.5, padding: "2px 7px", borderRadius: 10, background: "#F1EEE3", color: BLUE_SOFT }}>inativa</span>}
+            </div>
+            {r.partner_name && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: GOLD }}>{r.partner_name}</div>}
+            <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: BLUE_SOFT, marginTop: 4 }}>
+              {r.points_cost} pontos {r.quantity_available != null ? `· ${r.quantity_available} disponíveis` : "· sem limite"}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <Button variant="ghost" onClick={() => startEdit(r)}>Editar</Button>
+            <Button variant="ghost" onClick={() => toggleActive(r)}>{r.active ? "Desativar" : "Ativar"}</Button>
+            <Button variant="danger" onClick={() => remove(r)}><X size={14} /></Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ---------- App ----------
 export default function App() {
   const isPublic = !!getPublicSurveyId();
+  const isPoints = isPointsPage();
   const [session, setSession] = useState(undefined); // undefined = carregando
   const [view, setView] = useState("list");
   const [activeSurvey, setActiveSurvey] = useState(null);
 
   useEffect(() => {
-    if (isPublic) return;
+    if (isPublic || isPoints) return;
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => sub.subscription.unsubscribe();
-  }, [isPublic]);
+  }, [isPublic, isPoints]);
 
   const globalStyle = (
     <style>{`
@@ -941,6 +1293,11 @@ export default function App() {
   // Formulário público — sem login
   if (isPublic) {
     return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<RespondSurvey /></div>;
+  }
+
+  // Página pública de troca de pontos — sem login
+  if (isPoints) {
+    return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<PointsExchange /></div>;
   }
 
   if (session === undefined) {
@@ -961,7 +1318,7 @@ export default function App() {
         </button>
       </div>
 
-      {view === "list" && <SurveyList onCreate={() => { setActiveSurvey(null); setView("create"); }} onOpen={(s) => { setActiveSurvey(s); setView("dashboard"); }} onViewSubscribers={() => setView("subscribers")} />}
+      {view === "list" && <SurveyList onCreate={() => { setActiveSurvey(null); setView("create"); }} onOpen={(s) => { setActiveSurvey(s); setView("dashboard"); }} onViewSubscribers={() => setView("subscribers")} onViewRewards={() => setView("rewards")} />}
       {view === "create" && <CreateSurvey userId={session.user.id} editingSurvey={activeSurvey} onCancel={() => setView(activeSurvey ? "dashboard" : "list")} onSave={(s) => { setActiveSurvey(s); setView("dashboard"); }} />}
       {view === "dashboard" && activeSurvey && (
         <SurveyDashboard
@@ -973,6 +1330,7 @@ export default function App() {
         />
       )}
       {view === "subscribers" && <SubscribersView onBack={() => setView("list")} />}
+      {view === "rewards" && <RewardsAdmin onBack={() => setView("list")} />}
     </div>
   );
 }
