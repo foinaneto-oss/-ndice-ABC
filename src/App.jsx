@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Plus, ArrowLeft, Users, BarChart3, Share2, X, Check, ClipboardList, TrendingUp, Loader2, LogOut, Download, ChevronUp, ChevronDown, Instagram, Facebook, Copy } from "lucide-react";
+import { Plus, ArrowLeft, Users, BarChart3, Share2, X, Check, ClipboardList, TrendingUp, Loader2, LogOut, Download, ChevronUp, ChevronDown, Instagram, Facebook, Copy, Bell } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 // ---------- design tokens ----------
@@ -19,6 +19,10 @@ const FACEBOOK_URL = "https://facebook.com/indiceabc";
 // "Maps JavaScript API" ativada). Sem isso, o mapa de respostas não carrega.
 const GOOGLE_MAPS_API_KEY = "AIzaSyDWn_nd7Ch0F3Yiugxm70Ud-2GrAzcMvVE";
 
+// Chave pública das notificações push (gerada uma única vez pro projeto).
+// A chave privada correspondente fica só no servidor (Vercel), nunca aqui.
+const VAPID_PUBLIC_KEY = "BE9TIyQHEGIL4W5bYfzqqDO_bfSihPdh37l5Q8gRcAdhbSpyfZtJvzQxbxQuvtKrvCUU3gPmg8Y4vcN4eo7FRmo";
+
 // As 7 cidades do Grande ABC Paulista — o instituto cobre a região inteira,
 // não só São Caetano do Sul. Cada pesquisa escolhe a sua cidade, e o mapa
 // de respostas usa isso pra geocodificar os bairros certos, sem precisar
@@ -31,6 +35,38 @@ const ABC_CITIES = [
 
 function normalizeText(s) {
   return (s || "").toString().trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+// O navegador exige a chave pública VAPID nesse formato específico (array de bytes)
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+async function subscribeToPush() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    throw new Error("Seu navegador não é compatível com notificações. No iPhone, primeiro adicione o site à Tela de Início.");
+  }
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") {
+    throw new Error("Permissão de notificação não concedida.");
+  }
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+  });
+  const raw = subscription.toJSON();
+  const { error } = await supabase.from("push_subscriptions").insert({
+    endpoint: raw.endpoint,
+    p256dh: raw.keys.p256dh,
+    auth: raw.keys.auth,
+  });
+  if (error && !String(error.message).includes("duplicate")) throw error;
 }
 
 const sectionTitleStyle = { fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 17, color: "#0F2E52", marginTop: 22, marginBottom: 6 };
@@ -1089,6 +1125,8 @@ function PointsExchange() {
 // ---------- Home page (public, standalone) ----------
 function HomePage() {
   const [surveys, setSurveys] = useState(null);
+  const [notifStatus, setNotifStatus] = useState("idle"); // idle | asking | done | error
+  const [notifError, setNotifError] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -1099,7 +1137,22 @@ function HomePage() {
         .order("created_at", { ascending: false });
       setSurveys(data || []);
     })();
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      setNotifStatus("done");
+    }
   }, []);
+
+  const handleEnableNotifications = async () => {
+    setNotifStatus("asking");
+    setNotifError("");
+    try {
+      await subscribeToPush();
+      setNotifStatus("done");
+    } catch (e) {
+      setNotifError(e.message || "Não foi possível ativar as notificações.");
+      setNotifStatus("error");
+    }
+  };
 
   return (
     <PublicLayout>
@@ -1108,10 +1161,26 @@ function HomePage() {
         <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 10 }}>
           Instituto Índice e Desenvolvimento do ABC
         </h1>
-        <p style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 16, color: BLUE_SOFT, lineHeight: 1.6, marginBottom: 28 }}>
+        <p style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 16, color: BLUE_SOFT, lineHeight: 1.6, marginBottom: 20 }}>
           Gerar conhecimento estatisticamente rigoroso sobre a realidade do Grande ABC, para orientar decisões
           públicas, privadas e comunitárias com dados confiáveis.
         </p>
+
+        {notifStatus !== "done" && (
+          <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 14, marginBottom: 24, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <Bell size={20} color={GOLD} style={{ flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 13, color: INK }}>Ative as notificações</div>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>
+                Saiba na hora quando abrir uma pesquisa nova.
+                {notifError && <span style={{ color: "#8A3B3B" }}> {notifError}</span>}
+              </div>
+            </div>
+            <Button variant="gold" onClick={handleEnableNotifications} disabled={notifStatus === "asking"}>
+              {notifStatus === "asking" ? <Loader2 size={14} className="spin" /> : "Ativar"}
+            </Button>
+          </div>
+        )}
 
         <h3 style={sectionTitleStyle}>Pesquisas ativas</h3>
         {surveys === null ? (
@@ -1320,6 +1389,9 @@ function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDele
   const [notifying, setNotifying] = useState(false);
   const [notifiedAt, setNotifiedAt] = useState(survey.notified_at || null);
   const [notifyResult, setNotifyResult] = useState("");
+  const [confirmingPush, setConfirmingPush] = useState(false);
+  const [pushSending, setPushSending] = useState(false);
+  const [pushResult, setPushResult] = useState("");
   const publicUrl = `${window.location.origin}${window.location.pathname}?s=${survey.id}`;
   const previewUrl = `${publicUrl}&preview=1`;
 
@@ -1329,6 +1401,34 @@ function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDele
       setSubscriberCount(count || 0);
     })();
   }, []);
+
+  const sendPushNotification = async () => {
+    setPushSending(true);
+    setPushResult("");
+    try {
+      const res = await fetch("/api/send-push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({
+          title: "Nova pesquisa: " + survey.title,
+          body: `Responda e ganhe ${survey.points || 5} pontos.`,
+          url: publicUrl,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPushResult(data.error || "Não foi possível enviar a notificação.");
+      } else if (data.sent === 0 && data.message) {
+        setPushResult(data.message);
+      } else {
+        setPushResult(`Notificação enviada para ${data.sent} de ${data.total} pessoas.`);
+        setConfirmingPush(false);
+      }
+    } catch {
+      setPushResult("Erro de conexão. Tente novamente.");
+    }
+    setPushSending(false);
+  };
 
   const notifySubscribers = async () => {
     setNotifying(true);
@@ -1441,6 +1541,7 @@ function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDele
           <Button variant="ghost" onClick={() => navigator.clipboard?.writeText(publicUrl)}><Share2 size={14} /> Copiar link</Button>
           <Button variant="primary" onClick={exportCSV}><Download size={14} /> Exportar CSV</Button>
           <Button variant="ghost" onClick={() => setConfirmingNotify(true)}>Notificar inscritos</Button>
+          <Button variant="ghost" onClick={() => setConfirmingPush(true)}><Bell size={14} /> Notificação push</Button>
           <Button variant="ghost" onClick={onViewMap}>Ver no mapa</Button>
           <Button variant="danger" onClick={() => setConfirmingDelete(true)}><X size={14} /> Excluir</Button>
         </div>
@@ -1460,6 +1561,24 @@ function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDele
           <div style={{ display: "flex", gap: 8 }}>
             <Button variant="gold" onClick={notifySubscribers} disabled={notifying || !subscriberCount}>{notifying ? <Loader2 size={14} className="spin" /> : null} Sim, enviar agora</Button>
             <Button variant="ghost" onClick={() => setConfirmingNotify(false)}>Fechar</Button>
+          </div>
+        </div>
+      )}
+
+      {confirmingPush && (
+        <div style={{ background: "#FBF3E4", border: `1px solid ${GOLD_SOFT}`, borderRadius: 10, padding: 16, marginBottom: 18 }}>
+          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 13.5, color: "#8A6416", marginBottom: 6 }}>
+            Enviar notificação push sobre "{survey.title}"?
+          </div>
+          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: "#8A6416", marginBottom: 12 }}>
+            Vai pra todo mundo que ativou notificações no site (independente de ter se inscrito por e-mail ou não).
+          </div>
+          {pushResult && (
+            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: INK, marginBottom: 10 }}>{pushResult}</div>
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button variant="gold" onClick={sendPushNotification} disabled={pushSending}>{pushSending ? <Loader2 size={14} className="spin" /> : null} Sim, enviar agora</Button>
+            <Button variant="ghost" onClick={() => setConfirmingPush(false)}>Fechar</Button>
           </div>
         </div>
       )}
