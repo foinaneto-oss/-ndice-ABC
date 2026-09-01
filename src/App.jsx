@@ -155,6 +155,19 @@ function surveyPublicUrl(id) {
   return `${window.location.origin}${window.location.pathname}?s=${id}`;
 }
 
+function isResultsPage() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("results") === "1";
+}
+
+function resultsPageUrl() {
+  return `${window.location.origin}${window.location.pathname}?results=1`;
+}
+
+function resultsSurveyUrl(id) {
+  return `${window.location.origin}${window.location.pathname}?results=1&survey=${id}`;
+}
+
 // ---------- shared bits ----------
 function Brand() {
   return (
@@ -215,6 +228,7 @@ function PageFooter() {
       <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
         <a href={homePageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Início</a>
         <a href={aboutPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Sobre</a>
+        <a href={resultsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Publicadas</a>
         <a href={partnersPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Parceiros</a>
         <a href={pointsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Troque seus pontos</a>
         <a href={privacyPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Política de Privacidade</a>
@@ -233,6 +247,7 @@ function PublicLayout({ children }) {
   const links = [
     { label: "Início", href: homePageUrl() },
     { label: "Sobre", href: aboutPageUrl() },
+    { label: "Publicadas", href: resultsPageUrl() },
     { label: "Parceiros", href: partnersPageUrl() },
     { label: "Troque seus pontos", href: pointsPageUrl() },
     { label: "Política de Privacidade", href: privacyPageUrl() },
@@ -1331,6 +1346,143 @@ function PartnersPage() {
   );
 }
 
+// ---------- Published results (public, standalone page) ----------
+function PublishedResultsList() {
+  const [surveys, setSurveys] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("surveys")
+        .select("id, title, description, city, created_at")
+        .eq("published", true)
+        .order("created_at", { ascending: false });
+      setSurveys(data || []);
+    })();
+  }, []);
+
+  return (
+    <PublicLayout>
+      <PageMeta title="Publicadas" description="Resultados de pesquisas já concluídas e analisadas pelo Instituto Índice e Desenvolvimento do ABC." />
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
+        <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 6 }}>Publicadas</h1>
+        <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 24 }}>
+          Resultados de pesquisas já concluídas, tratadas e analisadas pelo Instituto.
+        </p>
+
+        {surveys === null ? (
+          <Loader2 className="spin" size={18} color={BLUE_SOFT} />
+        ) : surveys.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "40px 20px", border: `1px dashed ${LINE}`, borderRadius: 12, color: BLUE_SOFT, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5 }}>
+            Nenhum resultado publicado ainda. Volte em breve!
+          </div>
+        ) : (
+          surveys.map(s => (
+            <a key={s.id} href={resultsSurveyUrl(s.id)} style={{ display: "block", background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 10, textDecoration: "none" }}>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14.5, color: INK }}>{s.title}</div>
+              {s.description && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, marginTop: 3 }}>{s.description}</div>}
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD, marginTop: 6 }}>{s.city} →</div>
+            </a>
+          ))
+        )}
+        <PageFooter />
+      </div>
+    </PublicLayout>
+  );
+}
+
+function PublishedResultsDetail({ surveyId }) {
+  const [survey, setSurvey] = useState(null);
+  const [responses, setResponses] = useState(null);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data: surveyData, error } = await supabase
+        .from("surveys")
+        .select("id, title, description, city, questions, quotas, published")
+        .eq("id", surveyId)
+        .single();
+
+      if (error || !surveyData || !surveyData.published) { setNotFound(true); return; }
+      setSurvey(surveyData);
+
+      const { data: respData } = await supabase.rpc("get_published_survey_responses", { p_survey_id: surveyId });
+      setResponses(respData || []);
+    })();
+  }, [surveyId]);
+
+  if (notFound) {
+    return (
+      <PublicLayout>
+        <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px", textAlign: "center" }}>
+          <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: BLUE_SOFT }}>Esse resultado não está disponível.</p>
+          <a href={resultsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: BLUE, fontWeight: 600 }}>← Ver todas as publicadas</a>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  if (!survey || responses === null) {
+    return <PublicLayout><div style={{ padding: 60, textAlign: "center" }}><Loader2 className="spin" size={20} color={BLUE_SOFT} /></div></PublicLayout>;
+  }
+
+  const tally = (q) => {
+    const t = {};
+    (q.options || []).forEach(o => t[o] = 0);
+    responses.forEach(r => {
+      const a = r.answers?.[q.id];
+      if (q.type === "multi" && Array.isArray(a)) a.forEach(o => { t[o] = (t[o] || 0) + 1; });
+      else if (a) t[a] = (t[a] || 0) + 1;
+    });
+    return t;
+  };
+
+  return (
+    <PublicLayout>
+      <PageMeta title={survey.title} description={survey.description || `Resultados da pesquisa "${survey.title}" do Índice ABC.`} />
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
+        <a href={resultsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, display: "inline-flex", alignItems: "center", gap: 4, marginBottom: 14 }}>
+          <ArrowLeft size={14} /> Todas as publicadas
+        </a>
+        <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 25, color: INK, marginBottom: 4 }}>{survey.title}</h1>
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: GOLD, marginBottom: 6 }}>{survey.city}</div>
+        {survey.description && <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 10 }}>{survey.description}</p>}
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: BLUE_SOFT, marginBottom: 24 }}>{responses.length} respostas válidas</div>
+
+        {survey.questions.map(q => {
+          if (q.type === "text") return null; // texto livre não vira gráfico público
+          const t = tally(q);
+          const max = Math.max(1, ...Object.values(t));
+          return (
+            <div key={q.id} style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 12 }}>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 13.5, color: INK, marginBottom: 10 }}>{q.text}</div>
+              {Object.entries(t).map(([opt, n]) => (
+                <div key={opt} style={{ marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: INK, marginBottom: 3 }}>
+                    <span>{opt}</span><span style={{ fontFamily: "'IBM Plex Mono', monospace", color: BLUE_SOFT }}>{n}</span>
+                  </div>
+                  <div style={{ height: 7, background: "#EDE8DA", borderRadius: 4 }}>
+                    <div style={{ height: "100%", width: `${(n / max) * 100}%`, background: GOLD, borderRadius: 4 }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+
+        <PageFooter />
+      </div>
+    </PublicLayout>
+  );
+}
+
+function PublishedResults() {
+  const params = new URLSearchParams(window.location.search);
+  const surveyId = params.get("survey");
+  return surveyId ? <PublishedResultsDetail surveyId={surveyId} /> : <PublishedResultsList />;
+}
+
 function PrivacyPolicy() {
   return (
     <PublicLayout>
@@ -1410,6 +1562,8 @@ function PrivacyPolicy() {
 function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDeleted, onViewMap }) {
   const [responses, setResponses] = useState(null);
   const [surveyStatus, setSurveyStatus] = useState(survey.status || "ativa");
+  const [published, setPublished] = useState(survey.published || false);
+  const [publishSaving, setPublishSaving] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -1504,6 +1658,14 @@ function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDele
     const { error } = await supabase.from("surveys").update({ status: next }).eq("id", survey.id);
     if (!error) setSurveyStatus(next);
     setStatusSaving(false);
+  };
+
+  const togglePublished = async () => {
+    setPublishSaving(true);
+    const next = !published;
+    const { error } = await supabase.from("surveys").update({ published: next }).eq("id", survey.id);
+    if (!error) setPublished(next);
+    setPublishSaving(false);
   };
 
   const duplicateSurvey = async () => {
@@ -1664,10 +1826,16 @@ function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDele
           </div>
         </div>
       )}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
         <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, padding: "2px 8px", borderRadius: 12, background: surveyStatus === "ativa" ? "#E5F1E9" : "#F1EEE3", color: surveyStatus === "ativa" ? "#3E7A52" : BLUE_SOFT }}>
           {surveyStatus === "ativa" ? "Coletando respostas" : "Coleta encerrada"}
         </span>
+        <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, padding: "2px 8px", borderRadius: 12, background: published ? "#EEF2F6" : "#F1EEE3", color: published ? BLUE : BLUE_SOFT }}>
+          {published ? "Publicada em Publicadas" : "Não publicada"}
+        </span>
+        <Button variant={published ? "ghost" : "gold"} onClick={togglePublished} disabled={publishSaving} style={{ padding: "4px 10px", fontSize: 11.5 }}>
+          {publishSaving ? <Loader2 size={12} className="spin" /> : null} {published ? "Despublicar" : "Publicar resultados"}
+        </Button>
       </div>
       <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: BLUE_SOFT, marginBottom: 18, wordBreak: "break-all" }}>{publicUrl}</div>
 
@@ -2325,6 +2493,7 @@ export default function App() {
   const isPrivacy = isPrivacyPage();
   const isAbout = isAboutPage();
   const isPartners = isPartnersPage();
+  const isResults = isResultsPage();
   const isAdmin = isAdminPage();
   const [session, setSession] = useState(undefined); // undefined = carregando
   const [view, setView] = useState("list");
@@ -2385,6 +2554,11 @@ export default function App() {
   // Nossos parceiros — sem login
   if (isPartners) {
     return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<PartnersPage /></div>;
+  }
+
+  // Resultados publicados — sem login
+  if (isResults) {
+    return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<PublishedResults /></div>;
   }
 
   // Qualquer endereço que não seja uma rota conhecida nem o admin
