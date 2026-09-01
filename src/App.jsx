@@ -168,6 +168,15 @@ function resultsSurveyUrl(id) {
   return `${window.location.origin}${window.location.pathname}?results=1&survey=${id}`;
 }
 
+function isAccountsPage() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("contas") === "1";
+}
+
+function accountsPageUrl() {
+  return `${window.location.origin}${window.location.pathname}?contas=1`;
+}
+
 // ---------- shared bits ----------
 function Brand() {
   return (
@@ -228,7 +237,8 @@ function PageFooter() {
       <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
         <a href={homePageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Início</a>
         <a href={aboutPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Sobre</a>
-        <a href={resultsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Publicadas</a>
+        <a href={resultsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Pesquisas</a>
+        <a href={accountsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Contas Públicas</a>
         <a href={partnersPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Parceiros</a>
         <a href={pointsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Troque seus pontos</a>
         <a href={privacyPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Política de Privacidade</a>
@@ -243,11 +253,74 @@ function PageFooter() {
 // Menu lateral no computador (acima de 900px de largura) + navegação
 // compacta no celular. Usa apenas CSS (classes .pl-*) para alternar,
 // sem precisar de JavaScript pra detectar o tamanho da tela.
+// Ticker fixo no rodapé com as contas públicas do Grande ABC — aparece em
+// toda página pública, buscando os dados uma vez e "andando" visualmente
+// entre uma atualização oficial e outra (mesma lógica do Impostômetro).
+function FixedAccountsTicker() {
+  const [accounts, setAccounts] = useState(null);
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("public_accounts").select("*").order("receita", { ascending: false });
+      setAccounts(data || []);
+    })();
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => forceTick(n => n + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!accounts || accounts.length === 0) return null;
+
+  const liveValue = (acc, field) => {
+    const base = Number(acc[field]);
+    const periodStart = new Date(acc.period_start + "T00:00:00").getTime();
+    const asOf = new Date(acc.as_of + "T00:00:00").getTime();
+    const secondsElapsedAtBase = Math.max(1, (asOf - periodStart) / 1000);
+    const ratePerSecond = base / secondsElapsedAtBase;
+    const secondsSinceBase = (Date.now() - asOf) / 1000;
+    return base + ratePerSecond * secondsSinceBase;
+  };
+
+  const fmt = (v) => "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+  const items = accounts.map(a => (
+    <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 20px", borderRight: "1px solid rgba(255,255,255,0.1)", whiteSpace: "nowrap" }}>
+      <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, fontSize: 11, color: GOLD_SOFT, textTransform: "uppercase", letterSpacing: "0.03em" }}>{a.city}</div>
+      <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
+        <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 8.5, color: "rgba(255,255,255,0.5)", textTransform: "uppercase" }}>Receita</span>
+        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: "#fff", fontWeight: 600 }}>{fmt(liveValue(a, "receita"))}</span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
+        <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 8.5, color: "rgba(255,255,255,0.5)", textTransform: "uppercase" }}>Despesa</span>
+        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: "#fff", fontWeight: 600 }}>{fmt(liveValue(a, "despesa"))}</span>
+      </div>
+    </div>
+  ));
+
+  return (
+    <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50, background: BLUE, display: "flex", alignItems: "stretch", boxShadow: "0 -2px 10px rgba(0,0,0,0.15)" }}>
+      <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: "10px 14px", background: "#0A2140", borderRight: "1px solid rgba(255,255,255,0.12)" }}>
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, color: GOLD, letterSpacing: "0.04em" }}>GRANDE ABC</div>
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 11, color: "#fff" }}>Contas Públicas</div>
+      </div>
+      <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+        <div className="ticker-track" style={{ display: "flex", width: "max-content" }}>
+          {items}{items}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PublicLayout({ children }) {
   const links = [
     { label: "Início", href: homePageUrl() },
     { label: "Sobre", href: aboutPageUrl() },
-    { label: "Publicadas", href: resultsPageUrl() },
+    { label: "Pesquisas", href: resultsPageUrl() },
+    { label: "Contas Públicas", href: accountsPageUrl() },
     { label: "Parceiros", href: partnersPageUrl() },
     { label: "Troque seus pontos", href: pointsPageUrl() },
     { label: "Política de Privacidade", href: privacyPageUrl() },
@@ -256,7 +329,7 @@ function PublicLayout({ children }) {
     <div>
       <HeaderBanner />
       <div className="pl-mobile-nav" style={{ background: "#fff", borderBottom: `1px solid ${LINE}`, padding: "10px 16px", display: "flex", gap: 20, justifyContent: "center", flexWrap: "wrap" }}>
-        {links.slice(0, 4).map(l => (
+        {links.slice(0, 5).map(l => (
           <a key={l.href} href={l.href} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, fontWeight: 600 }}>{l.label}</a>
         ))}
       </div>
@@ -281,10 +354,11 @@ function PublicLayout({ children }) {
             Instituto Índice e Desenvolvimento do ABC<br />Santo André/SP — Grande ABC Paulista
           </div>
         </aside>
-        <div className="pl-content">
+        <div className="pl-content" style={{ paddingBottom: 54 }}>
           {children}
         </div>
       </div>
+      <FixedAccountsTicker />
     </div>
   );
 }
@@ -1181,18 +1255,13 @@ function PointsExchange() {
 
 // ---------- Home page (public, standalone) ----------
 function HomePage() {
-  const [surveys, setSurveys] = useState(null);
   const [totalResponses, setTotalResponses] = useState(null);
   const [notifStatus, setNotifStatus] = useState("idle"); // idle | asking | done | error
   const [notifError, setNotifError] = useState("");
 
   useEffect(() => {
     (async () => {
-      const [{ data }, { count }] = await Promise.all([
-        supabase.from("surveys").select("id, title, description, city, points").eq("status", "ativa").order("created_at", { ascending: false }),
-        supabase.from("responses").select("id", { count: "exact", head: true }),
-      ]);
-      setSurveys(data || []);
+      const { count } = await supabase.from("responses").select("id", { count: "exact", head: true });
       setTotalResponses(count || 0);
     })();
     if (typeof Notification !== "undefined" && Notification.permission === "granted") {
@@ -1254,27 +1323,12 @@ function HomePage() {
           </div>
         )}
 
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, marginBottom: 6 }}>Participe</div>
-        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: INK, marginBottom: 4 }}>Pesquisas ativas</div>
-
-        {surveys === null ? (
-          <Loader2 className="spin" size={18} color={BLUE_SOFT} style={{ marginTop: 16 }} />
-        ) : surveys.length === 0 ? (
-          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, padding: "16px 0" }}>
-            Nenhuma pesquisa aberta para participação no momento. Volte em breve!
-          </div>
-        ) : (
-          surveys.map(s => (
-            <a key={s.id} href={surveyPublicUrl(s.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 20, padding: "22px 0", borderTop: `1px solid ${LINE}`, textDecoration: "none" }}>
-              <div>
-                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 16, color: INK }}>{s.title}</div>
-                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, marginTop: 4 }}>{s.city || (s.description || "")}</div>
-              </div>
-              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, whiteSpace: "nowrap", flexShrink: 0 }}>{s.points || 5} pontos</div>
-            </a>
-          ))
-        )}
-        {surveys && surveys.length > 0 && <div style={{ borderTop: `1px solid ${LINE}` }} />}
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, marginBottom: 6 }}>Comece por aqui</div>
+        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: INK, marginBottom: 14 }}>Conheça o Instituto</div>
+        <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, maxWidth: "56ch", lineHeight: 1.6, marginBottom: 24 }}>
+          Veja nossas <a href={resultsPageUrl()} style={{ color: BLUE, fontWeight: 600 }}>pesquisas</a> em andamento e já publicadas,
+          ou acompanhe as <a href={accountsPageUrl()} style={{ color: BLUE, fontWeight: 600 }}>contas públicas</a> do Grande ABC, sempre visíveis no rodapé desta página.
+        </p>
 
         <PageFooter />
       </div>
@@ -1392,8 +1446,8 @@ function PublishedResultsList() {
     (async () => {
       const { data } = await supabase
         .from("surveys")
-        .select("id, title, description, city, created_at")
-        .eq("published", true)
+        .select("id, title, description, city, points, status, published, created_at")
+        .or("status.eq.ativa,published.eq.true")
         .order("created_at", { ascending: false });
       setSurveys(data || []);
     })();
@@ -1401,11 +1455,11 @@ function PublishedResultsList() {
 
   return (
     <PublicLayout>
-      <PageMeta title="Publicadas" description="Resultados de pesquisas já concluídas e analisadas pelo Instituto Índice e Desenvolvimento do ABC." />
+      <PageMeta title="Pesquisas" description="Pesquisas em andamento e resultados já publicados pelo Instituto Índice e Desenvolvimento do ABC." />
 
       <PageBand>
-        <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 28, color: "#fff", margin: "0 0 8px" }}>Publicadas</div>
-        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: GOLD_SOFT, maxWidth: "56ch" }}>Resultados de pesquisas já concluídas, tratadas e analisadas pelo Instituto</div>
+        <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 28, color: "#fff", margin: "0 0 8px" }}>Pesquisas</div>
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: GOLD_SOFT, maxWidth: "56ch" }}>Em andamento e já publicadas pelo Instituto</div>
       </PageBand>
 
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "36px 16px 60px" }}>
@@ -1413,16 +1467,27 @@ function PublishedResultsList() {
           <Loader2 className="spin" size={18} color={BLUE_SOFT} />
         ) : surveys.length === 0 ? (
           <div style={{ textAlign: "center", padding: "40px 20px", border: `1px dashed ${LINE}`, borderRadius: 12, color: BLUE_SOFT, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5 }}>
-            Nenhum resultado publicado ainda. Volte em breve!
+            Nenhuma pesquisa disponível no momento. Volte em breve!
           </div>
         ) : (
-          surveys.map((s, i) => (
-            <a key={s.id} href={resultsSurveyUrl(s.id)} style={{ display: "block", padding: "24px 0", borderTop: `1px solid ${LINE}`, borderBottom: i === surveys.length - 1 ? `1px solid ${LINE}` : "none", textDecoration: "none" }}>
-              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD, textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.city}</div>
-              <div style={{ fontFamily: "'Newsreader', serif", fontSize: 20, fontWeight: 500, color: INK, margin: "6px 0 6px" }}>{s.title}</div>
-              {s.description && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, maxWidth: "56ch" }}>{s.description}</div>}
-            </a>
-          ))
+          surveys.map((s, i) => {
+            const isPublished = s.published;
+            const href = isPublished ? resultsSurveyUrl(s.id) : surveyPublicUrl(s.id);
+            return (
+              <a key={s.id} href={href} style={{ display: "block", padding: "24px 0", borderTop: `1px solid ${LINE}`, borderBottom: i === surveys.length - 1 ? `1px solid ${LINE}` : "none", textDecoration: "none" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                  <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD, textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.city}</div>
+                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap", background: isPublished ? "#EEF2F6" : "#EFE3C6", color: isPublished ? BLUE : "#8A6416" }}>
+                    {isPublished ? "Publicada" : "Em andamento"}
+                  </span>
+                </div>
+                <div style={{ fontFamily: "'Newsreader', serif", fontSize: 20, fontWeight: 500, color: INK, margin: "6px 0 6px" }}>{s.title}</div>
+                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, maxWidth: "56ch" }}>
+                  {isPublished ? (s.description || "Resultados já tratados e analisados.") : `${s.description ? s.description + " " : ""}Ganhe ${s.points || 5} pontos ao participar.`}
+                </div>
+              </a>
+            );
+          })
         )}
         <PageFooter />
       </div>
@@ -1524,6 +1589,64 @@ function PublishedResults() {
   const params = new URLSearchParams(window.location.search);
   const surveyId = params.get("survey");
   return surveyId ? <PublishedResultsDetail surveyId={surveyId} /> : <PublishedResultsList />;
+}
+
+// ---------- Public accounts page (public, standalone) ----------
+function PublicAccountsPage() {
+  const [accounts, setAccounts] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("public_accounts").select("*").order("receita", { ascending: false });
+      setAccounts(data || []);
+    })();
+  }, []);
+
+  const fmt = (v) => "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const mostRecentAsOf = accounts && accounts.length > 0
+    ? accounts.reduce((max, a) => (a.as_of > max ? a.as_of : max), accounts[0].as_of)
+    : null;
+
+  return (
+    <PublicLayout>
+      <PageMeta title="Contas Públicas" description="Receita e despesa das 7 cidades do Grande ABC, com base em dados do TCE-SP." />
+
+      <PageBand>
+        <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 28, color: "#fff", margin: "0 0 8px" }}>Contas Públicas</div>
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: GOLD_SOFT, maxWidth: "56ch" }}>Receita e despesa das 7 cidades do Grande ABC, com base no TCE-SP</div>
+      </PageBand>
+
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "36px 16px 60px" }}>
+        {accounts === null ? (
+          <Loader2 className="spin" size={18} color={BLUE_SOFT} />
+        ) : (
+          accounts.map((a, i) => (
+            <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 0", borderTop: `1px solid ${LINE}`, borderBottom: i === accounts.length - 1 ? `1px solid ${LINE}` : "none", gap: 16, flexWrap: "wrap" }}>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 15, color: INK }}>{a.city}</div>
+              <div style={{ display: "flex", gap: 20 }}>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 9.5, color: BLUE_SOFT, textTransform: "uppercase" }}>Receita</span>
+                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: INK }}>{fmt(a.receita)}</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 9.5, color: BLUE_SOFT, textTransform: "uppercase" }}>Despesa</span>
+                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: INK }}>{fmt(a.despesa)}</span>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: BLUE_SOFT, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 8, padding: "12px 14px", lineHeight: 1.6, marginTop: 20 }}>
+          Os valores acima "andam" visualmente com base numa projeção estimada — o consolidado oficial mais recente na fonte é de{" "}
+          {mostRecentAsOf ? new Date(mostRecentAsOf + "T00:00:00").toLocaleDateString("pt-BR") : "—"}.{" "}
+          <a href="https://transparencia.tce.sp.gov.br" target="_blank" rel="noopener noreferrer" style={{ color: BLUE, fontWeight: 600 }}>transparencia.tce.sp.gov.br</a>
+        </div>
+
+        <PageFooter />
+      </div>
+    </PublicLayout>
+  );
 }
 
 function PrivacyPolicy() {
@@ -1931,7 +2054,7 @@ function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDele
 }
 
 // ---------- List view (admin) ----------
-function SurveyList({ onCreate, onOpen, onViewSubscribers, onViewRewards, onViewOverview, onViewPointsReport }) {
+function SurveyList({ onCreate, onOpen, onViewSubscribers, onViewRewards, onViewOverview, onViewPointsReport, onViewAccounts }) {
   const [surveys, setSurveys] = useState(null);
 
   useEffect(() => {
@@ -1955,6 +2078,7 @@ function SurveyList({ onCreate, onOpen, onViewSubscribers, onViewRewards, onView
           <Button variant="ghost" onClick={onViewPointsReport}>Relatório de Pontos</Button>
           <Button variant="ghost" onClick={onViewSubscribers}>Inscritos</Button>
           <Button variant="ghost" onClick={onViewRewards}>Recompensas</Button>
+          <Button variant="ghost" onClick={onViewAccounts}>Contas Públicas</Button>
           <Button variant="gold" onClick={onCreate}><Plus size={15} /> Nova pesquisa</Button>
         </div>
       </div>
@@ -2038,6 +2162,114 @@ function SubscribersView({ onBack }) {
 }
 
 // ---------- Rewards catalog (admin) ----------
+// ---------- Contas Públicas (admin) ----------
+function PublicAccountsAdmin({ onBack }) {
+  const [accounts, setAccounts] = useState(null);
+  const [editing, setEditing] = useState({}); // id -> { receita, despesa, period_start, as_of, source_url }
+  const [savingId, setSavingId] = useState(null);
+  const [savedId, setSavedId] = useState(null);
+
+  const load = async () => {
+    const { data } = await supabase.from("public_accounts").select("*").order("city");
+    setAccounts(data || []);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const startEdit = (a) => {
+    setEditing(e => ({ ...e, [a.id]: { receita: a.receita, despesa: a.despesa, period_start: a.period_start, as_of: a.as_of, source_url: a.source_url || "" } }));
+  };
+
+  const updateField = (id, field, value) => {
+    setEditing(e => ({ ...e, [id]: { ...e[id], [field]: value } }));
+  };
+
+  const save = async (id) => {
+    setSavingId(id);
+    const vals = editing[id];
+    const { error } = await supabase.from("public_accounts").update({
+      receita: Number(vals.receita) || 0,
+      despesa: Number(vals.despesa) || 0,
+      period_start: vals.period_start,
+      as_of: vals.as_of,
+      source_url: vals.source_url,
+      updated_at: new Date().toISOString(),
+    }).eq("id", id);
+    if (!error) {
+      setSavedId(id);
+      setTimeout(() => setSavedId(null), 2000);
+      setEditing(e => { const n = { ...e }; delete n[id]; return n; });
+      load();
+    }
+    setSavingId(null);
+  };
+
+  return (
+    <div style={{ maxWidth: 800, margin: "0 auto", padding: "28px 16px 60px" }}>
+      <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: BLUE_SOFT, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, cursor: "pointer", marginBottom: 14, padding: 0 }}>
+        <ArrowLeft size={15} /> Voltar
+      </button>
+      <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 4 }}>Contas Públicas</h1>
+      <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, marginBottom: 24 }}>
+        Atualize aqui sempre que o TCE-SP soltar um consolidado novo. Esses valores alimentam o ticker fixo e a aba "Contas Públicas" do site.
+      </p>
+
+      {accounts === null ? (
+        <Loader2 className="spin" size={18} color={BLUE_SOFT} />
+      ) : (
+        accounts.map(a => {
+          const isEditing = !!editing[a.id];
+          const vals = editing[a.id] || {};
+          return (
+            <div key={a.id} style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: isEditing ? 12 : 0 }}>
+                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 15, color: INK }}>{a.city}</div>
+                {!isEditing && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    {savedId === a.id && <Check size={15} color="#3E7A52" />}
+                    <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: BLUE_SOFT }}>
+                      Receita {Number(a.receita).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} · Despesa {Number(a.despesa).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} · atualizado em {new Date(a.as_of + "T00:00:00").toLocaleDateString("pt-BR")}
+                    </div>
+                    <Button variant="ghost" onClick={() => startEdit(a)}>Editar</Button>
+                  </div>
+                )}
+              </div>
+
+              {isEditing && (
+                <div>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                    <Field label="Receita (R$)">
+                      <input style={{ ...inputStyle, width: 170, fontFamily: "'IBM Plex Mono', monospace" }} type="number" step="0.01" value={vals.receita} onChange={e => updateField(a.id, "receita", e.target.value)} />
+                    </Field>
+                    <Field label="Despesa (R$)">
+                      <input style={{ ...inputStyle, width: 170, fontFamily: "'IBM Plex Mono', monospace" }} type="number" step="0.01" value={vals.despesa} onChange={e => updateField(a.id, "despesa", e.target.value)} />
+                    </Field>
+                    <Field label="Início do período">
+                      <input style={{ ...inputStyle, width: 150 }} type="date" value={vals.period_start} onChange={e => updateField(a.id, "period_start", e.target.value)} />
+                    </Field>
+                    <Field label="Consolidado em (fonte)">
+                      <input style={{ ...inputStyle, width: 150 }} type="date" value={vals.as_of} onChange={e => updateField(a.id, "as_of", e.target.value)} />
+                    </Field>
+                  </div>
+                  <Field label="Link da fonte (TCE-SP)">
+                    <input style={{ ...inputStyle, marginBottom: 10 }} value={vals.source_url} onChange={e => updateField(a.id, "source_url", e.target.value)} />
+                  </Field>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Button variant="gold" onClick={() => save(a.id)} disabled={savingId === a.id}>
+                      {savingId === a.id ? <Loader2 size={14} className="spin" /> : null} Salvar
+                    </Button>
+                    <Button variant="ghost" onClick={() => setEditing(e => { const n = { ...e }; delete n[a.id]; return n; })}>Cancelar</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 function RewardsAdmin({ onBack }) {
   const [rewards, setRewards] = useState(null);
   const [form, setForm] = useState(null); // null = fechado; {} = criando; {...} = editando
@@ -2537,6 +2769,7 @@ export default function App() {
   const isAbout = isAboutPage();
   const isPartners = isPartnersPage();
   const isResults = isResultsPage();
+  const isAccounts = isAccountsPage();
   const isAdmin = isAdminPage();
   const [session, setSession] = useState(undefined); // undefined = carregando
   const [view, setView] = useState("list");
@@ -2575,6 +2808,10 @@ export default function App() {
       @media (min-width: 640px) {
         .hero-grid-inline { grid-template-columns: 200px 1fr !important; align-items: end; }
       }
+
+      .ticker-track { animation: ticker-scroll 55s linear infinite; }
+      .ticker-track:hover { animation-play-state: paused; }
+      @keyframes ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
     `}</style>
   );
 
@@ -2608,6 +2845,11 @@ export default function App() {
     return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<PublishedResults /></div>;
   }
 
+  // Contas públicas do Grande ABC — sem login
+  if (isAccounts) {
+    return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<PublicAccountsPage /></div>;
+  }
+
   // Qualquer endereço que não seja uma rota conhecida nem o admin
   // cai na página inicial institucional — inclusive a raiz do site.
   if (!isAdmin) {
@@ -2632,7 +2874,7 @@ export default function App() {
         </button>
       </div>
 
-      {view === "list" && <SurveyList onCreate={() => { setActiveSurvey(null); setView("create"); }} onOpen={(s) => { setActiveSurvey(s); setView("dashboard"); }} onViewSubscribers={() => setView("subscribers")} onViewRewards={() => setView("rewards")} onViewOverview={() => setView("overview")} onViewPointsReport={() => setView("pointsreport")} />}
+      {view === "list" && <SurveyList onCreate={() => { setActiveSurvey(null); setView("create"); }} onOpen={(s) => { setActiveSurvey(s); setView("dashboard"); }} onViewSubscribers={() => setView("subscribers")} onViewRewards={() => setView("rewards")} onViewOverview={() => setView("overview")} onViewPointsReport={() => setView("pointsreport")} onViewAccounts={() => setView("accounts")} />}
       {view === "create" && <CreateSurvey userId={session.user.id} editingSurvey={activeSurvey} onCancel={() => setView(activeSurvey ? "dashboard" : "list")} onSave={(s) => { setActiveSurvey(s); setView("dashboard"); }} />}
       {view === "dashboard" && activeSurvey && (
         <SurveyDashboard
@@ -2649,6 +2891,7 @@ export default function App() {
       {view === "rewards" && <RewardsAdmin onBack={() => setView("list")} />}
       {view === "overview" && <OverviewPanel onBack={() => setView("list")} onOpenSurvey={(s) => { setActiveSurvey(s); setView("dashboard"); }} />}
       {view === "pointsreport" && <PointsReport onBack={() => setView("list")} />}
+      {view === "accounts" && <PublicAccountsAdmin onBack={() => setView("list")} />}
       {view === "map" && activeSurvey && <SurveyMapView survey={activeSurvey} onBack={() => setView("dashboard")} />}
     </div>
   );
