@@ -289,6 +289,18 @@ function PublicLayout({ children }) {
   );
 }
 
+// Faixa azul-marinho que estende a cor do cabeçalho pra dentro da página,
+// em vez de cortar seco pro fundo claro. Usada no topo de toda página pública.
+function PageBand({ children }) {
+  return (
+    <div style={{ background: BLUE, padding: "44px 0" }}>
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "0 16px" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function PyramidBar({ label, target, count }) {
   const pct = target > 0 ? Math.min(100, Math.round((count / target) * 100)) : 0;
   const full = count >= target && target > 0;
@@ -1170,17 +1182,18 @@ function PointsExchange() {
 // ---------- Home page (public, standalone) ----------
 function HomePage() {
   const [surveys, setSurveys] = useState(null);
+  const [totalResponses, setTotalResponses] = useState(null);
   const [notifStatus, setNotifStatus] = useState("idle"); // idle | asking | done | error
   const [notifError, setNotifError] = useState("");
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
-        .from("surveys")
-        .select("id, title, description, points")
-        .eq("status", "ativa")
-        .order("created_at", { ascending: false });
+      const [{ data }, { count }] = await Promise.all([
+        supabase.from("surveys").select("id, title, description, city, points").eq("status", "ativa").order("created_at", { ascending: false }),
+        supabase.from("responses").select("id", { count: "exact", head: true }),
+      ]);
       setSurveys(data || []);
+      setTotalResponses(count || 0);
     })();
     if (typeof Notification !== "undefined" && Notification.permission === "granted") {
       setNotifStatus("done");
@@ -1202,17 +1215,31 @@ function HomePage() {
   return (
     <PublicLayout>
       <PageMeta title="Início" description="Instituto Índice e Desenvolvimento do ABC — pesquisas e índices estatisticamente rigorosos sobre o Grande ABC Paulista." />
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
-        <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 10 }}>
-          Instituto Índice e Desenvolvimento do ABC
-        </h1>
-        <p style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 16, color: BLUE_SOFT, lineHeight: 1.6, marginBottom: 20 }}>
-          Gerar conhecimento estatisticamente rigoroso sobre a realidade do Grande ABC, para orientar decisões
-          públicas, privadas e comunitárias com dados confiáveis.
-        </p>
 
+      <PageBand>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 28 }} className="hero-grid-inline">
+          <div>
+            <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 64, lineHeight: 0.95, color: GOLD_SOFT, letterSpacing: "-0.02em" }}>
+              {totalResponses === null ? "…" : totalResponses}
+            </div>
+            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: "#fff", lineHeight: 1.4, marginTop: 6, maxWidth: 220 }}>
+              respostas coletadas pelo Instituto até agora
+            </div>
+          </div>
+          <div>
+            <h1 style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 26, lineHeight: 1.2, color: "#fff", margin: "0 0 12px" }}>
+              Instituto Índice e Desenvolvimento do ABC
+            </h1>
+            <p style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 15.5, lineHeight: 1.6, color: GOLD_SOFT, maxWidth: "50ch", margin: 0 }}>
+              Gerar conhecimento estatisticamente rigoroso sobre a realidade do Grande ABC, para orientar decisões públicas, privadas e comunitárias com dados confiáveis.
+            </p>
+          </div>
+        </div>
+      </PageBand>
+
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "36px 16px 60px" }}>
         {notifStatus !== "done" && (
-          <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 14, marginBottom: 24, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 14, marginBottom: 28, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <Bell size={20} color={GOLD} style={{ flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 180 }}>
               <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 13, color: INK }}>Ative as notificações</div>
@@ -1227,22 +1254,27 @@ function HomePage() {
           </div>
         )}
 
-        <h3 style={sectionTitleStyle}>Pesquisas ativas</h3>
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, marginBottom: 6 }}>Participe</div>
+        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: INK, marginBottom: 4 }}>Pesquisas ativas</div>
+
         {surveys === null ? (
-          <Loader2 className="spin" size={18} color={BLUE_SOFT} />
+          <Loader2 className="spin" size={18} color={BLUE_SOFT} style={{ marginTop: 16 }} />
         ) : surveys.length === 0 ? (
           <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, padding: "16px 0" }}>
             Nenhuma pesquisa aberta para participação no momento. Volte em breve!
           </div>
         ) : (
           surveys.map(s => (
-            <a key={s.id} href={surveyPublicUrl(s.id)} style={{ display: "block", background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 10, textDecoration: "none" }}>
-              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14.5, color: INK }}>{s.title}</div>
-              {s.description && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, marginTop: 3 }}>{s.description}</div>}
-              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: GOLD, marginTop: 6 }}>Ganhe {s.points || 5} pontos ao responder →</div>
+            <a key={s.id} href={surveyPublicUrl(s.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 20, padding: "22px 0", borderTop: `1px solid ${LINE}`, textDecoration: "none" }}>
+              <div>
+                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 16, color: INK }}>{s.title}</div>
+                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, marginTop: 4 }}>{s.city || (s.description || "")}</div>
+              </div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, whiteSpace: "nowrap", flexShrink: 0 }}>{s.points || 5} pontos</div>
             </a>
           ))
         )}
+        {surveys && surveys.length > 0 && <div style={{ borderTop: `1px solid ${LINE}` }} />}
 
         <PageFooter />
       </div>
@@ -1255,34 +1287,39 @@ function AboutPage() {
   return (
     <PublicLayout>
       <PageMeta title="Sobre" description="Conheça a missão, a metodologia e a natureza jurídica do Instituto Índice e Desenvolvimento do ABC." />
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
-        <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 20 }}>Sobre o Instituto</h1>
 
-        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 14, color: INK, lineHeight: 1.7 }}>
-          <p>
-            O <strong>Instituto Índice e Desenvolvimento do ABC (IIDABC)</strong> é uma associação civil sem fins
+      <PageBand>
+        <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 28, color: "#fff", margin: "0 0 8px" }}>Sobre o Instituto</div>
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: GOLD_SOFT, maxWidth: "56ch" }}>Missão, natureza jurídica e metodologia do IIDABC</div>
+      </PageBand>
+
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "36px 16px 60px" }}>
+        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 17, color: INK, lineHeight: 1.75 }}>
+          <p style={{ marginTop: 0 }}>
+            O Instituto Índice e Desenvolvimento do ABC (IIDABC) é uma associação civil sem fins
             econômicos dedicada à produção de índices, pesquisas e diagnósticos estatísticos sobre os municípios
-            do Grande ABC Paulista, com atuação inicial concentrada em São Caetano do Sul.
+            do Grande ABC Paulista.
+          </p>
+
+          <div style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 21, lineHeight: 1.5, color: BLUE, maxWidth: "56ch", margin: "34px 0", paddingLeft: 20, borderLeft: `2px solid ${GOLD}` }}>
+            "Decisões sobre segurança, mobilidade, comércio local e qualidade de vida frequentemente carecem de dados primários, atualizados e metodologicamente sólidos."
+          </div>
+
+          <p>
+            O IIDABC nasce para produzir esse conhecimento com rigor científico — amostragem estatisticamente
+            representativa, baseada em dados do Censo IBGE, com margens de erro e níveis de confiança declarados
+            em cada pesquisa publicada.
           </p>
           <p>
-            Nossa missão é preencher uma lacuna real: decisões sobre segurança, mobilidade, comércio local e
-            qualidade de vida na região frequentemente carecem de dados primários, atualizados e
-            metodologicamente sólidos. O IIDABC nasce para produzir esse conhecimento com rigor científico —
-            amostragem estatisticamente representativa, baseada em dados do Censo IBGE, com margens de erro e
-            níveis de confiança declarados em cada pesquisa publicada.
-          </p>
-          <p>
-            Acreditamos que dados confiáveis fortalecem o debate público. Por isso, os resultados das pesquisas
-            do Instituto são disponibilizados à imprensa, ao poder público, a empresas e à sociedade civil,
+            Os resultados são disponibilizados à imprensa, ao poder público, a empresas e à sociedade civil,
             contribuindo para decisões mais informadas em toda a região do ABC.
           </p>
+        </div>
 
-          <h3 style={sectionTitleStyle}>Dados institucionais</h3>
-          <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: BLUE_SOFT, lineHeight: 1.9 }}>
-            Natureza jurídica: Associação civil de direito privado, sem fins econômicos<br />
-            Sede: Santo André/SP — Grande ABC Paulista<br />
-            Contato: institutoindiceabc@gmail.com
-          </p>
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: BLUE_SOFT, lineHeight: 2, marginTop: 30 }}>
+          Natureza jurídica — Associação civil de direito privado, sem fins econômicos<br />
+          Sede — Santo André/SP — Grande ABC Paulista<br />
+          Contato — institutoindiceabc@gmail.com
         </div>
 
         <PageFooter />
@@ -1319,12 +1356,13 @@ function PartnersPage() {
   return (
     <PublicLayout>
       <PageMeta title="Parceiros" description="Empresas e comércios parceiros do programa de pontos do Índice ABC." />
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
-        <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 6 }}>Nossos Parceiros</h1>
-        <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 24 }}>
-          Empresas e comércios que oferecem vouchers e descontos pelo programa de pontos do Índice ABC.
-        </p>
 
+      <PageBand>
+        <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 28, color: "#fff", margin: "0 0 8px" }}>Nossos Parceiros</div>
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: GOLD_SOFT, maxWidth: "56ch" }}>Empresas e comércios que oferecem vouchers e descontos pelo programa de pontos</div>
+      </PageBand>
+
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "36px 16px 60px" }}>
         {partners === null ? (
           <Loader2 className="spin" size={18} color={BLUE_SOFT} />
         ) : partnerNames.length === 0 ? (
@@ -1332,10 +1370,10 @@ function PartnersPage() {
             Em breve, novos parceiros por aqui.
           </div>
         ) : (
-          partnerNames.map(name => (
-            <div key={name} style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 10 }}>
-              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 15, color: INK }}>{name}</div>
-              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: GOLD, marginTop: 4 }}>{partners[name].join(" · ")}</div>
+          partnerNames.map((name, i) => (
+            <div key={name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 0", borderTop: `1px solid ${LINE}`, borderBottom: i === partnerNames.length - 1 ? `1px solid ${LINE}` : "none" }}>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 16, color: INK }}>{name}</div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, textAlign: "right" }}>{partners[name].join(" · ")}</div>
             </div>
           ))
         )}
@@ -1364,12 +1402,13 @@ function PublishedResultsList() {
   return (
     <PublicLayout>
       <PageMeta title="Publicadas" description="Resultados de pesquisas já concluídas e analisadas pelo Instituto Índice e Desenvolvimento do ABC." />
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
-        <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 6 }}>Publicadas</h1>
-        <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 24 }}>
-          Resultados de pesquisas já concluídas, tratadas e analisadas pelo Instituto.
-        </p>
 
+      <PageBand>
+        <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 28, color: "#fff", margin: "0 0 8px" }}>Publicadas</div>
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: GOLD_SOFT, maxWidth: "56ch" }}>Resultados de pesquisas já concluídas, tratadas e analisadas pelo Instituto</div>
+      </PageBand>
+
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "36px 16px 60px" }}>
         {surveys === null ? (
           <Loader2 className="spin" size={18} color={BLUE_SOFT} />
         ) : surveys.length === 0 ? (
@@ -1377,11 +1416,11 @@ function PublishedResultsList() {
             Nenhum resultado publicado ainda. Volte em breve!
           </div>
         ) : (
-          surveys.map(s => (
-            <a key={s.id} href={resultsSurveyUrl(s.id)} style={{ display: "block", background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 10, textDecoration: "none" }}>
-              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14.5, color: INK }}>{s.title}</div>
-              {s.description && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, marginTop: 3 }}>{s.description}</div>}
-              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD, marginTop: 6 }}>{s.city} →</div>
+          surveys.map((s, i) => (
+            <a key={s.id} href={resultsSurveyUrl(s.id)} style={{ display: "block", padding: "24px 0", borderTop: `1px solid ${LINE}`, borderBottom: i === surveys.length - 1 ? `1px solid ${LINE}` : "none", textDecoration: "none" }}>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD, textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.city}</div>
+              <div style={{ fontFamily: "'Newsreader', serif", fontSize: 20, fontWeight: 500, color: INK, margin: "6px 0 6px" }}>{s.title}</div>
+              {s.description && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, maxWidth: "56ch" }}>{s.description}</div>}
             </a>
           ))
         )}
@@ -1441,13 +1480,17 @@ function PublishedResultsDetail({ surveyId }) {
   return (
     <PublicLayout>
       <PageMeta title={survey.title} description={survey.description || `Resultados da pesquisa "${survey.title}" do Índice ABC.`} />
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "28px 16px 60px" }}>
-        <a href={resultsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, display: "inline-flex", alignItems: "center", gap: 4, marginBottom: 14 }}>
-          <ArrowLeft size={14} /> Todas as publicadas
+
+      <PageBand>
+        <a href={resultsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: GOLD_SOFT, display: "inline-flex", alignItems: "center", gap: 4, marginBottom: 14, textDecoration: "none" }}>
+          <ArrowLeft size={13} /> Todas as publicadas
         </a>
-        <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 25, color: INK, marginBottom: 4 }}>{survey.title}</h1>
-        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: GOLD, marginBottom: 6 }}>{survey.city}</div>
-        {survey.description && <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 10 }}>{survey.description}</p>}
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD, textTransform: "uppercase", letterSpacing: "0.06em" }}>{survey.city}</div>
+        <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 26, color: "#fff", margin: "6px 0 8px" }}>{survey.title}</div>
+        {survey.description && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: GOLD_SOFT, maxWidth: "56ch" }}>{survey.description}</div>}
+      </PageBand>
+
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "36px 16px 60px" }}>
         <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: BLUE_SOFT, marginBottom: 24 }}>{responses.length} respostas válidas</div>
 
         {survey.questions.map(q => {
@@ -2528,6 +2571,10 @@ export default function App() {
 
       .step-fade { animation: stepFadeIn 0.25s ease; }
       @keyframes stepFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+      @media (min-width: 640px) {
+        .hero-grid-inline { grid-template-columns: 200px 1fr !important; align-items: end; }
+      }
     `}</style>
   );
 
