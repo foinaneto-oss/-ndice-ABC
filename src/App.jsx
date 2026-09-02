@@ -177,6 +177,18 @@ function accountsPageUrl() {
   return `${window.location.origin}${window.location.pathname}?contas=1`;
 }
 
+function isIndicesPage() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("indices") === "1";
+}
+
+function indicesPageUrl() {
+  return `${window.location.origin}${window.location.pathname}?indices=1`;
+}
+
+// Categorias fixas pra manter consistência ao filtrar os índices
+const INDEX_CATEGORIES = ["Segurança", "Economia", "Educação", "Saúde", "Mobilidade", "Meio Ambiente", "Outro"];
+
 // ---------- shared bits ----------
 function Brand() {
   return (
@@ -239,6 +251,7 @@ function PageFooter() {
         <a href={aboutPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Sobre</a>
         <a href={resultsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Pesquisas</a>
         <a href={accountsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Contas Públicas</a>
+        <a href={indicesPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Índices</a>
         <a href={partnersPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Parceiros</a>
         <a href={pointsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Troque seus pontos</a>
         <a href={privacyPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Política de Privacidade</a>
@@ -321,6 +334,7 @@ function PublicLayout({ children }) {
     { label: "Sobre", href: aboutPageUrl() },
     { label: "Pesquisas", href: resultsPageUrl() },
     { label: "Contas Públicas", href: accountsPageUrl() },
+    { label: "Índices", href: indicesPageUrl() },
     { label: "Parceiros", href: partnersPageUrl() },
     { label: "Troque seus pontos", href: pointsPageUrl() },
     { label: "Política de Privacidade", href: privacyPageUrl() },
@@ -1748,6 +1762,94 @@ function PublishedResults() {
 }
 
 // ---------- Public accounts page (public, standalone) ----------
+// ---------- Índices (public, standalone) — curadoria de dados de terceiros ----------
+function PublicIndicesPage() {
+  const [selectedCity, setSelectedCity] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [indices, setIndices] = useState(null);
+
+  useEffect(() => {
+    if (!selectedCity) { setIndices(null); return; }
+    (async () => {
+      const { data } = await supabase.from("indices").select("*").eq("city", selectedCity).order("created_at", { ascending: false });
+      setIndices(data || []);
+    })();
+  }, [selectedCity]);
+
+  const filtered = indices && selectedCategory ? indices.filter(i => i.category === selectedCategory) : indices;
+  const categoriesPresent = indices ? [...new Set(indices.map(i => i.category))] : [];
+
+  return (
+    <PublicLayout>
+      <PageMeta title="Índices" description="Compilação de índices e pesquisas de outras instituições sobre as cidades do Grande ABC." />
+
+      <PageBand>
+        <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 28, color: "#fff", margin: "0 0 8px" }}>Índices</div>
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: GOLD_SOFT, maxWidth: "56ch" }}>
+          Uma compilação de índices e pesquisas produzidos por outras instituições sobre as cidades do Grande ABC.
+        </div>
+      </PageBand>
+
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "36px 16px 60px" }}>
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, marginBottom: 10 }}>Escolha uma cidade</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 28 }}>
+          {ABC_CITIES.map(c => (
+            <button key={c} onClick={() => { setSelectedCity(c); setSelectedCategory(null); }} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, fontWeight: 600, padding: "8px 14px", borderRadius: 20, border: selectedCity === c ? "none" : `1px solid ${LINE}`, background: selectedCity === c ? BLUE : "#fff", color: selectedCity === c ? "#fff" : INK, cursor: "pointer" }}>
+              {c}
+            </button>
+          ))}
+        </div>
+
+        {selectedCity === null ? (
+          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, padding: "20px 0" }}>
+            Escolha uma cidade acima pra ver os índices compilados.
+          </div>
+        ) : indices === null ? (
+          <Loader2 className="spin" size={18} color={BLUE_SOFT} />
+        ) : (
+          <>
+            {categoriesPresent.length > 1 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 20 }}>
+                <button onClick={() => setSelectedCategory(null)} style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, padding: "4px 10px", borderRadius: 12, border: "none", background: !selectedCategory ? GOLD_SOFT : "transparent", color: !selectedCategory ? "#5C4419" : BLUE_SOFT, cursor: "pointer" }}>Todos</button>
+                {categoriesPresent.map(cat => (
+                  <button key={cat} onClick={() => setSelectedCategory(cat)} style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, padding: "4px 10px", borderRadius: 12, border: "none", background: selectedCategory === cat ? GOLD_SOFT : "transparent", color: selectedCategory === cat ? "#5C4419" : BLUE_SOFT, cursor: "pointer" }}>{cat}</button>
+                ))}
+              </div>
+            )}
+
+            {filtered.length === 0 ? (
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, padding: "16px 0" }}>
+                Ainda não compilamos nenhum índice pra {selectedCity}.
+              </div>
+            ) : (
+              filtered.map((idx, i) => (
+                <div key={idx.id} style={{ padding: "22px 0", borderTop: `1px solid ${LINE}`, borderBottom: i === filtered.length - 1 ? `1px solid ${LINE}` : "none" }}>
+                  <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, color: GOLD, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>{idx.category}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+                    <div style={{ fontFamily: "'Newsreader', serif", fontSize: 17, fontWeight: 500, color: INK }}>{idx.title}</div>
+                    <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: BLUE, whiteSpace: "nowrap" }}>{idx.value}</div>
+                  </div>
+                  {idx.context && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: INK, marginTop: 6, lineHeight: 1.5 }}>{idx.context}</div>}
+                  <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: BLUE_SOFT, marginTop: 8 }}>
+                    Fonte: {idx.source_url ? <a href={idx.source_url} target="_blank" rel="noopener noreferrer" style={{ color: BLUE_SOFT, textDecoration: "underline" }}>{idx.source_name}</a> : idx.source_name}
+                    {idx.reference_period && ` · ${idx.reference_period}`}
+                  </div>
+                </div>
+              ))
+            )}
+          </>
+        )}
+
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: BLUE_SOFT, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 8, padding: "12px 14px", lineHeight: 1.6, marginTop: 28 }}>
+          Os índices desta página são produzidos por outras instituições, não pelo Índice ABC — reunimos aqui como curadoria, sempre com a fonte original indicada.
+        </div>
+
+        <PageFooter />
+      </div>
+    </PublicLayout>
+  );
+}
+
 function PublicAccountsPage() {
   const [accounts, setAccounts] = useState(null);
 
@@ -2210,7 +2312,7 @@ function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDele
 }
 
 // ---------- List view (admin) ----------
-function SurveyList({ onCreate, onOpen, onViewSubscribers, onViewRewards, onViewOverview, onViewPointsReport, onViewAccounts, onViewUpcoming }) {
+function SurveyList({ onCreate, onOpen, onViewSubscribers, onViewRewards, onViewOverview, onViewPointsReport, onViewAccounts, onViewUpcoming, onViewIndices }) {
   const [surveys, setSurveys] = useState(null);
 
   useEffect(() => {
@@ -2236,6 +2338,7 @@ function SurveyList({ onCreate, onOpen, onViewSubscribers, onViewRewards, onView
           <Button variant="ghost" onClick={onViewRewards}>Recompensas</Button>
           <Button variant="ghost" onClick={onViewAccounts}>Contas Públicas</Button>
           <Button variant="ghost" onClick={onViewUpcoming}>Em breve</Button>
+          <Button variant="ghost" onClick={onViewIndices}>Índices</Button>
           <Button variant="gold" onClick={onCreate}><Plus size={15} /> Nova pesquisa</Button>
         </div>
       </div>
@@ -2383,6 +2486,119 @@ function UpcomingSurveysAdmin({ onBack }) {
               <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD }}>{it.city}</div>
             </div>
             <Button variant="danger" onClick={() => remove(it.id)}><X size={13} /></Button>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+// ---------- Índices (admin) — cadastro da curadoria ----------
+function IndicesAdmin({ onBack }) {
+  const emptyForm = { city: "São Caetano do Sul", category: "Segurança", title: "", value: "", source_name: "", source_url: "", reference_period: "", context: "" };
+  const [items, setItems] = useState(null);
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
+  const [filterCity, setFilterCity] = useState("Todas");
+
+  const load = async () => {
+    const { data } = await supabase.from("indices").select("*").order("created_at", { ascending: false });
+    setItems(data || []);
+  };
+  useEffect(() => { load(); }, []);
+
+  const add = async () => {
+    if (!form.title.trim() || !form.value.trim() || !form.source_name.trim()) return;
+    setSaving(true);
+    await supabase.from("indices").insert({
+      city: form.city,
+      category: form.category,
+      title: form.title.trim(),
+      value: form.value.trim(),
+      source_name: form.source_name.trim(),
+      source_url: form.source_url.trim() || null,
+      reference_period: form.reference_period.trim() || null,
+      context: form.context.trim() || null,
+    });
+    setForm(emptyForm);
+    await load();
+    setSaving(false);
+  };
+
+  const remove = async (id) => {
+    await supabase.from("indices").delete().eq("id", id);
+    load();
+  };
+
+  const shown = filterCity === "Todas" ? items : (items || []).filter(i => i.city === filterCity);
+
+  return (
+    <div style={{ maxWidth: 760, margin: "0 auto", padding: "28px 16px 60px" }}>
+      <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: BLUE_SOFT, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, cursor: "pointer", marginBottom: 14, padding: 0 }}>
+        <ArrowLeft size={15} /> Voltar
+      </button>
+      <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 4 }}>Índices</h1>
+      <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, marginBottom: 24 }}>
+        Cadastre índices e pesquisas de outras instituições sobre as cidades do Grande ABC. Sempre indique a fonte.
+      </p>
+
+      <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 24 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+          <Field label="Cidade">
+            <select style={{ ...inputStyle, width: 220 }} value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))}>
+              {ABC_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </Field>
+          <Field label="Categoria">
+            <select style={{ ...inputStyle, width: 180 }} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
+              {INDEX_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </Field>
+        </div>
+        <Field label="Título do índice">
+          <input style={inputStyle} placeholder="Ex: Índice de Segurança Pública" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+        </Field>
+        <Field label="Valor / resultado">
+          <input style={inputStyle} placeholder="Ex: 72/100, ou 3º lugar no ranking estadual" value={form.value} onChange={e => setForm(f => ({ ...f, value: e.target.value }))} />
+        </Field>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Field label="Quem produziu">
+            <input style={{ ...inputStyle, width: 260 }} placeholder="Ex: Fórum Brasileiro de Segurança Pública" value={form.source_name} onChange={e => setForm(f => ({ ...f, source_name: e.target.value }))} />
+          </Field>
+          <Field label="Período de referência">
+            <input style={{ ...inputStyle, width: 160 }} placeholder="Ex: 2026" value={form.reference_period} onChange={e => setForm(f => ({ ...f, reference_period: e.target.value }))} />
+          </Field>
+        </div>
+        <Field label="Link da fonte (opcional)">
+          <input style={inputStyle} placeholder="https://..." value={form.source_url} onChange={e => setForm(f => ({ ...f, source_url: e.target.value }))} />
+        </Field>
+        <Field label="Contexto (opcional)">
+          <textarea style={{ ...inputStyle, minHeight: 50 }} value={form.context} onChange={e => setForm(f => ({ ...f, context: e.target.value }))} />
+        </Field>
+        <Button variant="gold" onClick={add} disabled={saving || !form.title.trim() || !form.value.trim() || !form.source_name.trim()}>
+          {saving ? <Loader2 size={14} className="spin" /> : <Plus size={14} />} Adicionar
+        </Button>
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <select style={{ ...inputStyle, width: 220 }} value={filterCity} onChange={e => setFilterCity(e.target.value)}>
+          <option value="Todas">Todas as cidades</option>
+          {ABC_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+
+      {items === null ? (
+        <Loader2 className="spin" size={18} color={BLUE_SOFT} />
+      ) : shown.length === 0 ? (
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT }}>Nenhum índice cadastrado ainda.</div>
+      ) : (
+        shown.map(idx => (
+          <div key={idx.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0", borderTop: `1px solid ${LINE}`, gap: 12 }}>
+            <div>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14, color: INK }}>{idx.title} — {idx.value}</div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD }}>{idx.city} · {idx.category} · {idx.source_name}</div>
+            </div>
+            <Button variant="danger" onClick={() => remove(idx.id)}><X size={13} /></Button>
           </div>
         ))
       )}
@@ -2997,6 +3213,7 @@ export default function App() {
   const isPartners = isPartnersPage();
   const isResults = isResultsPage();
   const isAccounts = isAccountsPage();
+  const isIndices = isIndicesPage();
   const isAdmin = isAdminPage();
   const [session, setSession] = useState(undefined); // undefined = carregando
   const [view, setView] = useState("list");
@@ -3079,6 +3296,11 @@ export default function App() {
     return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<PublicAccountsPage /></div>;
   }
 
+  // Índices — curadoria de dados de terceiros, sem login
+  if (isIndices) {
+    return <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>{globalStyle}<PublicIndicesPage /></div>;
+  }
+
   // Qualquer endereço que não seja uma rota conhecida nem o admin
   // cai na página inicial institucional — inclusive a raiz do site.
   if (!isAdmin) {
@@ -3103,7 +3325,7 @@ export default function App() {
         </button>
       </div>
 
-      {view === "list" && <SurveyList onCreate={() => { setActiveSurvey(null); setView("create"); }} onOpen={(s) => { setActiveSurvey(s); setView("dashboard"); }} onViewSubscribers={() => setView("subscribers")} onViewRewards={() => setView("rewards")} onViewOverview={() => setView("overview")} onViewPointsReport={() => setView("pointsreport")} onViewAccounts={() => setView("accounts")} onViewUpcoming={() => setView("upcoming")} />}
+      {view === "list" && <SurveyList onCreate={() => { setActiveSurvey(null); setView("create"); }} onOpen={(s) => { setActiveSurvey(s); setView("dashboard"); }} onViewSubscribers={() => setView("subscribers")} onViewRewards={() => setView("rewards")} onViewOverview={() => setView("overview")} onViewPointsReport={() => setView("pointsreport")} onViewAccounts={() => setView("accounts")} onViewUpcoming={() => setView("upcoming")} onViewIndices={() => setView("indices")} />}
       {view === "create" && <CreateSurvey userId={session.user.id} editingSurvey={activeSurvey} onCancel={() => setView(activeSurvey ? "dashboard" : "list")} onSave={(s) => { setActiveSurvey(s); setView("dashboard"); }} />}
       {view === "dashboard" && activeSurvey && (
         <SurveyDashboard
@@ -3122,6 +3344,7 @@ export default function App() {
       {view === "pointsreport" && <PointsReport onBack={() => setView("list")} />}
       {view === "accounts" && <PublicAccountsAdmin onBack={() => setView("list")} />}
       {view === "upcoming" && <UpcomingSurveysAdmin onBack={() => setView("list")} />}
+      {view === "indices" && <IndicesAdmin onBack={() => setView("list")} />}
       {view === "map" && activeSurvey && <SurveyMapView survey={activeSurvey} onBack={() => setView("dashboard")} />}
     </div>
   );
