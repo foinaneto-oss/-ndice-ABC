@@ -478,6 +478,8 @@ function CreateSurvey({ userId, editingSurvey, onCancel, onSave }) {
   );
   const [points, setPoints] = useState(editingSurvey?.points ?? 5);
   const [city, setCity] = useState(editingSurvey?.city || "São Caetano do Sul");
+  const [highlightStat, setHighlightStat] = useState(editingSurvey?.highlight_stat || "");
+  const [highlightLabel, setHighlightLabel] = useState(editingSurvey?.highlight_label || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -511,6 +513,8 @@ function CreateSurvey({ userId, editingSurvey, onCancel, onSave }) {
       quotas: quotas.map(q => ({ ...q, target: Number(q.target) || 0 })),
       points: Number(points) || 5,
       city,
+      highlight_stat: highlightStat.trim() || null,
+      highlight_label: highlightLabel.trim() || null,
     };
     let data, error;
     if (editingSurvey) {
@@ -546,6 +550,16 @@ function CreateSurvey({ userId, editingSurvey, onCancel, onSave }) {
       <Field label="Pontos ao completar a pesquisa">
         <input style={{ ...inputStyle, maxWidth: 100, fontFamily: "'IBM Plex Mono', monospace" }} type="number" min="0" value={points} onChange={e => setPoints(e.target.value)} />
         <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: BLUE_SOFT, marginTop: 4 }}>Sugestão: entre 5 e 10 pontos.</div>
+      </Field>
+
+      <Field label="Destaque na Início (opcional)">
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <input style={{ ...inputStyle, width: 100, fontFamily: "'IBM Plex Mono', monospace" }} placeholder="Ex: 68%" value={highlightStat} onChange={e => setHighlightStat(e.target.value)} />
+          <input style={{ ...inputStyle, flex: 1, minWidth: 220 }} placeholder="Ex: dos jovens usam Instagram diariamente" value={highlightLabel} onChange={e => setHighlightLabel(e.target.value)} />
+        </div>
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: BLUE_SOFT, marginTop: 4 }}>
+          Só aparece na Início depois que essa pesquisa for publicada. Preencha com o achado mais interessante.
+        </div>
       </Field>
 
       <div style={{ borderTop: `1px solid ${LINE}`, paddingTop: 18, marginTop: 6 }}>
@@ -1258,11 +1272,40 @@ function HomePage() {
   const [totalResponses, setTotalResponses] = useState(null);
   const [notifStatus, setNotifStatus] = useState("idle"); // idle | asking | done | error
   const [notifError, setNotifError] = useState("");
+  const [activeSurveys, setActiveSurveys] = useState(null);
+  const [upcoming, setUpcoming] = useState(null);
+  const [highlight, setHighlight] = useState(null);
+  const [subscriberCount, setSubscriberCount] = useState(null);
+  const [exampleReward, setExampleReward] = useState(null);
+  const [citiesWithSurvey, setCitiesWithSurvey] = useState(null);
+  const [openFaq, setOpenFaq] = useState(null);
 
   useEffect(() => {
     (async () => {
-      const { count } = await supabase.from("responses").select("id", { count: "exact", head: true });
-      setTotalResponses(count || 0);
+      const [
+        { count: respCount },
+        { data: activeData },
+        { data: upcomingData },
+        { data: highlightData },
+        { count: subCount },
+        { data: rewardData },
+        { data: allSurveys },
+      ] = await Promise.all([
+        supabase.from("responses").select("id", { count: "exact", head: true }),
+        supabase.from("surveys").select("id, title, city, points").eq("status", "ativa").order("created_at", { ascending: false }).limit(3),
+        supabase.from("upcoming_surveys").select("*").order("created_at", { ascending: false }).limit(2),
+        supabase.from("surveys").select("id, title, highlight_stat, highlight_label").eq("published", true).not("highlight_stat", "is", null).order("created_at", { ascending: false }).limit(1),
+        supabase.from("subscribers").select("id", { count: "exact", head: true }),
+        supabase.from("rewards").select("name, partner_name, points_cost").eq("active", true).order("points_cost", { ascending: true }).limit(1),
+        supabase.from("surveys").select("city"),
+      ]);
+      setTotalResponses(respCount || 0);
+      setActiveSurveys(activeData || []);
+      setUpcoming(upcomingData || []);
+      setHighlight(highlightData && highlightData[0] ? highlightData[0] : null);
+      setSubscriberCount(subCount || 0);
+      setExampleReward(rewardData && rewardData[0] ? rewardData[0] : null);
+      setCitiesWithSurvey(new Set((allSurveys || []).map(s => s.city)));
     })();
     if (typeof Notification !== "undefined" && Notification.permission === "granted") {
       setNotifStatus("done");
@@ -1280,6 +1323,13 @@ function HomePage() {
       setNotifStatus("error");
     }
   };
+
+  const FAQ = [
+    { q: "Minhas respostas são anônimas?", a: "Sim. Não pedimos nome nem e-mail para responder — só se você quiser participar do programa de pontos depois." },
+    { q: "Como funcionam os pontos?", a: "Cada pesquisa vale alguns pontos. Você troca por vouchers e descontos de comércios parceiros do Grande ABC." },
+    { q: "Quem pode responder?", a: "Qualquer morador do Grande ABC. Cada pesquisa tem cotas por idade, sexo e cidade, definidas pelo Censo IBGE." },
+    { q: "Como sei que os dados são confiáveis?", a: "Seguimos amostragem estatística real, com coleta em dobro e exclusão de respostas suspeitas antes de qualquer publicação." },
+  ];
 
   return (
     <PublicLayout>
@@ -1306,7 +1356,7 @@ function HomePage() {
         </div>
       </PageBand>
 
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "36px 16px 60px" }}>
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "36px 16px 20px" }}>
         {notifStatus !== "done" && (
           <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 14, marginBottom: 28, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <Bell size={20} color={GOLD} style={{ flexShrink: 0 }} />
@@ -1323,12 +1373,118 @@ function HomePage() {
           </div>
         )}
 
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, marginBottom: 6 }}>Comece por aqui</div>
-        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: INK, marginBottom: 14 }}>Conheça o Instituto</div>
-        <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, maxWidth: "56ch", lineHeight: 1.6, marginBottom: 24 }}>
-          Veja nossas <a href={resultsPageUrl()} style={{ color: BLUE, fontWeight: 600 }}>pesquisas</a> em andamento e já publicadas,
-          ou acompanhe as <a href={accountsPageUrl()} style={{ color: BLUE, fontWeight: 600 }}>contas públicas</a> do Grande ABC, sempre visíveis no rodapé desta página.
-        </p>
+        {/* 1. Destaque de resultado publicado */}
+        {highlight && (
+          <a href={resultsSurveyUrl(highlight.id)} style={{ display: "flex", gap: 24, alignItems: "flex-end", flexWrap: "wrap", padding: "28px 0", borderTop: `1px solid ${LINE}`, borderBottom: `1px solid ${LINE}`, margin: "0 0 32px", textDecoration: "none" }}>
+            <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 64, lineHeight: 0.9, color: BLUE, letterSpacing: "-0.02em" }}>{highlight.highlight_stat}</div>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD, marginBottom: 4 }}>Achado recente</div>
+              <p style={{ fontFamily: "'Newsreader', serif", fontSize: 16, color: INK, lineHeight: 1.45, margin: "0 0 6px", maxWidth: "34ch" }}>{highlight.highlight_label}</p>
+              <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Ver pesquisa completa →</span>
+            </div>
+          </a>
+        )}
+
+        {/* 2. Como fazemos pesquisa */}
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, marginBottom: 6 }}>Metodologia</div>
+        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: INK, marginBottom: 4 }}>Como fazemos pesquisa</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 0, margin: "20px 0" }} className="steps-grid">
+          {[
+            { n: "01", t: "Amostra representativa", d: "Cotas por idade e sexo, baseadas no Censo IBGE de cada cidade." },
+            { n: "02", t: "Coleta em dobro", d: "Coletamos cerca de 2× a amostra necessária, prevendo exclusões." },
+            { n: "03", t: "Tratamento antes de publicar", d: "Excluímos respostas suspeitas (muito rápidas, IPs duplicados, fora da cidade)." },
+          ].map(s => (
+            <div key={s.n} style={{ padding: "16px 16px 16px 0", borderTop: `2px solid ${GOLD}` }}>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD, marginBottom: 6 }}>{s.n}</div>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14, color: INK, marginBottom: 4 }}>{s.t}</div>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, lineHeight: 1.5 }}>{s.d}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* 3. Cobertura regional */}
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, marginTop: 32, marginBottom: 6 }}>Cobertura</div>
+        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: INK, marginBottom: 4 }}>Grande ABC</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "20px 0 32px" }}>
+          {ABC_CITIES.map(c => {
+            const active = citiesWithSurvey && citiesWithSurvey.has(c);
+            return (
+              <span key={c} style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, padding: "6px 12px", borderRadius: 14, background: active ? BLUE : "transparent", color: active ? "#fff" : BLUE_SOFT, border: active ? "none" : `1px dashed ${LINE}` }}>
+                {c}
+              </span>
+            );
+          })}
+        </div>
+
+        {/* 4. Pesquisas (ativas + em breve) */}
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, marginBottom: 6 }}>Participe</div>
+        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: INK, marginBottom: 4 }}>Pesquisas</div>
+        {activeSurveys === null ? (
+          <Loader2 className="spin" size={16} color={BLUE_SOFT} style={{ marginTop: 16 }} />
+        ) : (
+          <>
+            {activeSurveys.map(s => (
+              <a key={s.id} href={surveyPublicUrl(s.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 20, padding: "20px 0", borderTop: `1px solid ${LINE}`, textDecoration: "none" }}>
+                <div>
+                  <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 15, color: INK }}>{s.title}</div>
+                  <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT, marginTop: 3 }}>{s.city}</div>
+                </div>
+                <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: GOLD, whiteSpace: "nowrap" }}>{s.points || 5} pontos</div>
+              </a>
+            ))}
+            {(upcoming || []).map(u => (
+              <div key={u.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 20, padding: "20px 0", borderTop: `1px dashed ${LINE}`, opacity: 0.75 }}>
+                <div>
+                  <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 15, color: INK }}>{u.title}</div>
+                  <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT, marginTop: 3 }}>{u.city}</div>
+                </div>
+                <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: BLUE_SOFT, whiteSpace: "nowrap" }}>Em breve</div>
+              </div>
+            ))}
+            {activeSurveys.length === 0 && (!upcoming || upcoming.length === 0) && (
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, padding: "16px 0" }}>Nenhuma pesquisa disponível no momento.</div>
+            )}
+          </>
+        )}
+
+        {/* 5. Prova social + programa de pontos */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 20, margin: "36px 0" }} className="two-col-grid">
+          <div>
+            <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 38, color: BLUE, lineHeight: 1 }}>{subscriberCount === null ? "…" : subscriberCount}</div>
+            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, marginTop: 4 }}>pessoas já participaram das nossas pesquisas</div>
+          </div>
+          <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 18 }}>
+            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14, color: INK, marginBottom: 4 }}>Responda e ganhe pontos</div>
+            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, lineHeight: 1.5, marginBottom: 10 }}>Troque por vouchers e descontos de comércios parceiros do Grande ABC.</div>
+            {exampleReward && (
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD }}>
+                Ex: {exampleReward.name}{exampleReward.partner_name ? ` · ${exampleReward.partner_name}` : ""} · {exampleReward.points_cost} pontos
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 6. FAQ */}
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, marginBottom: 6 }}>Dúvidas</div>
+        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: INK, marginBottom: 4 }}>Perguntas frequentes</div>
+        {FAQ.map((item, i) => (
+          <div key={i} style={{ borderTop: `1px solid ${LINE}`, borderBottom: i === FAQ.length - 1 ? `1px solid ${LINE}` : "none" }}>
+            <div onClick={() => setOpenFaq(openFaq === i ? null : i)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 0", cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14, color: INK }}>
+              {item.q}
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: GOLD, fontSize: 16, transform: openFaq === i ? "rotate(45deg)" : "none", transition: "transform 0.2s" }}>+</span>
+            </div>
+            {openFaq === i && (
+              <div style={{ padding: "0 0 16px", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, lineHeight: 1.6, maxWidth: "60ch" }}>{item.a}</div>
+            )}
+          </div>
+        ))}
+
+        {/* 7. Chamada pra empresas */}
+        <div style={{ background: BLUE, borderRadius: 10, padding: "28px 24px", margin: "36px 0 8px" }}>
+          <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 19, color: "#fff", marginBottom: 6 }}>Sua empresa quer apoiar uma pesquisa?</div>
+          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: GOLD_SOFT, maxWidth: "50ch", marginBottom: 14 }}>Empresas do Grande ABC podem patrocinar ou colaborar com estudos específicos do Instituto.</div>
+          <a href="mailto:institutoindiceabc@gmail.com" style={{ display: "inline-block", fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 13, color: BLUE, background: GOLD_SOFT, padding: "9px 18px", borderRadius: 6, textDecoration: "none" }}>Fale conosco</a>
+        </div>
 
         <PageFooter />
       </div>
@@ -2054,7 +2210,7 @@ function SurveyDashboard({ survey, session, onBack, onEdit, onDuplicated, onDele
 }
 
 // ---------- List view (admin) ----------
-function SurveyList({ onCreate, onOpen, onViewSubscribers, onViewRewards, onViewOverview, onViewPointsReport, onViewAccounts }) {
+function SurveyList({ onCreate, onOpen, onViewSubscribers, onViewRewards, onViewOverview, onViewPointsReport, onViewAccounts, onViewUpcoming }) {
   const [surveys, setSurveys] = useState(null);
 
   useEffect(() => {
@@ -2079,6 +2235,7 @@ function SurveyList({ onCreate, onOpen, onViewSubscribers, onViewRewards, onView
           <Button variant="ghost" onClick={onViewSubscribers}>Inscritos</Button>
           <Button variant="ghost" onClick={onViewRewards}>Recompensas</Button>
           <Button variant="ghost" onClick={onViewAccounts}>Contas Públicas</Button>
+          <Button variant="ghost" onClick={onViewUpcoming}>Em breve</Button>
           <Button variant="gold" onClick={onCreate}><Plus size={15} /> Nova pesquisa</Button>
         </div>
       </div>
@@ -2163,6 +2320,76 @@ function SubscribersView({ onBack }) {
 
 // ---------- Rewards catalog (admin) ----------
 // ---------- Contas Públicas (admin) ----------
+// ---------- Pesquisas "em breve" (admin) ----------
+function UpcomingSurveysAdmin({ onBack }) {
+  const [items, setItems] = useState(null);
+  const [form, setForm] = useState({ title: "", city: "São Caetano do Sul", description: "" });
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    const { data } = await supabase.from("upcoming_surveys").select("*").order("created_at", { ascending: false });
+    setItems(data || []);
+  };
+  useEffect(() => { load(); }, []);
+
+  const add = async () => {
+    if (!form.title.trim()) return;
+    setSaving(true);
+    await supabase.from("upcoming_surveys").insert({ title: form.title.trim(), city: form.city, description: form.description.trim() || null });
+    setForm({ title: "", city: "São Caetano do Sul", description: "" });
+    await load();
+    setSaving(false);
+  };
+
+  const remove = async (id) => {
+    await supabase.from("upcoming_surveys").delete().eq("id", id);
+    load();
+  };
+
+  return (
+    <div style={{ maxWidth: 700, margin: "0 auto", padding: "28px 16px 60px" }}>
+      <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: BLUE_SOFT, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, cursor: "pointer", marginBottom: 14, padding: 0 }}>
+        <ArrowLeft size={15} /> Voltar
+      </button>
+      <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 26, color: INK, marginBottom: 4 }}>Pesquisas "em breve"</h1>
+      <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, marginBottom: 24 }}>
+        Anuncie uma pesquisa futura na Início, sem precisar montar o formulário inteiro ainda.
+      </p>
+
+      <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 16, marginBottom: 24 }}>
+        <Field label="Título">
+          <input style={inputStyle} value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+        </Field>
+        <Field label="Cidade do Grande ABC">
+          <select style={{ ...inputStyle, maxWidth: 260 }} value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))}>
+            {ABC_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </Field>
+        <Field label="Descrição (opcional)">
+          <input style={inputStyle} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+        </Field>
+        <Button variant="gold" onClick={add} disabled={saving || !form.title.trim()}>{saving ? <Loader2 size={14} className="spin" /> : <Plus size={14} />} Anunciar</Button>
+      </div>
+
+      {items === null ? (
+        <Loader2 className="spin" size={18} color={BLUE_SOFT} />
+      ) : items.length === 0 ? (
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT }}>Nenhuma pesquisa anunciada ainda.</div>
+      ) : (
+        items.map(it => (
+          <div key={it.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0", borderTop: `1px solid ${LINE}` }}>
+            <div>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14, color: INK }}>{it.title}</div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD }}>{it.city}</div>
+            </div>
+            <Button variant="danger" onClick={() => remove(it.id)}><X size={13} /></Button>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
 function PublicAccountsAdmin({ onBack }) {
   const [accounts, setAccounts] = useState(null);
   const [editing, setEditing] = useState({}); // id -> { receita, despesa, period_start, as_of, source_url }
@@ -2807,6 +3034,8 @@ export default function App() {
 
       @media (min-width: 640px) {
         .hero-grid-inline { grid-template-columns: 200px 1fr !important; align-items: end; }
+        .steps-grid { grid-template-columns: repeat(3, 1fr) !important; gap: 24px !important; }
+        .two-col-grid { grid-template-columns: 1fr 1fr !important; }
       }
 
       .ticker-track { animation: ticker-scroll 55s linear infinite; }
@@ -2874,7 +3103,7 @@ export default function App() {
         </button>
       </div>
 
-      {view === "list" && <SurveyList onCreate={() => { setActiveSurvey(null); setView("create"); }} onOpen={(s) => { setActiveSurvey(s); setView("dashboard"); }} onViewSubscribers={() => setView("subscribers")} onViewRewards={() => setView("rewards")} onViewOverview={() => setView("overview")} onViewPointsReport={() => setView("pointsreport")} onViewAccounts={() => setView("accounts")} />}
+      {view === "list" && <SurveyList onCreate={() => { setActiveSurvey(null); setView("create"); }} onOpen={(s) => { setActiveSurvey(s); setView("dashboard"); }} onViewSubscribers={() => setView("subscribers")} onViewRewards={() => setView("rewards")} onViewOverview={() => setView("overview")} onViewPointsReport={() => setView("pointsreport")} onViewAccounts={() => setView("accounts")} onViewUpcoming={() => setView("upcoming")} />}
       {view === "create" && <CreateSurvey userId={session.user.id} editingSurvey={activeSurvey} onCancel={() => setView(activeSurvey ? "dashboard" : "list")} onSave={(s) => { setActiveSurvey(s); setView("dashboard"); }} />}
       {view === "dashboard" && activeSurvey && (
         <SurveyDashboard
@@ -2892,6 +3121,7 @@ export default function App() {
       {view === "overview" && <OverviewPanel onBack={() => setView("list")} onOpenSurvey={(s) => { setActiveSurvey(s); setView("dashboard"); }} />}
       {view === "pointsreport" && <PointsReport onBack={() => setView("list")} />}
       {view === "accounts" && <PublicAccountsAdmin onBack={() => setView("list")} />}
+      {view === "upcoming" && <UpcomingSurveysAdmin onBack={() => setView("list")} />}
       {view === "map" && activeSurvey && <SurveyMapView survey={activeSurvey} onBack={() => setView("dashboard")} />}
     </div>
   );
