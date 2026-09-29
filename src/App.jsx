@@ -10,7 +10,12 @@ const BLUE_SOFT = "#3B5975";
 const GOLD = "#C79A45";
 const GOLD_SOFT = "#E7D4A4";
 const PAPER = "#F7F5EF";
+const PAPER_DARK = "#EFEBE0";
 const LINE = "#DCD6C6";
+const LINE_SOFT = "#E8E3D6";
+const NAVY_DARK = "#0A2140";
+const RED = "#B8453D";
+const MUTED = "#6B7A8C";
 
 // Edite aqui os links das redes sociais do instituto
 const INSTAGRAM_URL = "https://instagram.com/indiceabc";
@@ -33,6 +38,47 @@ const ABC_CITIES = [
   "Santo André", "São Bernardo do Campo", "São Caetano do Sul",
   "Diadema", "Mauá", "Ribeirão Pires", "Rio Grande da Serra",
 ];
+
+// População de cada cidade (IBGE, Censo 2022) — usada no painel da Início
+// e na página de Contas Públicas pra calcular receita por habitante.
+const ABC_POPULATION = {
+  "Santo André": 748919,
+  "São Bernardo do Campo": 810729,
+  "São Caetano do Sul": 165655,
+  "Diadema": 393237,
+  "Mauá": 418261,
+  "Ribeirão Pires": 115559,
+  "Rio Grande da Serra": 44170,
+};
+
+// Nome curto e posição de cada cidade no "mapa" em blocos da Início
+// (grade de 5 colunas × 3 linhas, aproximando a geografia da região).
+const ABC_MAP_TILES = {
+  "Diadema": { short: "Diadema", area: "1 / 1 / 2 / 2" },
+  "São Caetano do Sul": { short: "São Caetano", area: "1 / 2 / 2 / 3" },
+  "Santo André": { short: "Santo André", area: "1 / 3 / 3 / 4" },
+  "Mauá": { short: "Mauá", area: "1 / 4 / 2 / 5" },
+  "São Bernardo do Campo": { short: "São Bernardo", area: "2 / 1 / 4 / 3" },
+  "Ribeirão Pires": { short: "Ribeirão Pires", area: "2 / 4 / 3 / 5" },
+  "Rio Grande da Serra": { short: "Rio Gde. da Serra", area: "2 / 5 / 4 / 6" },
+};
+
+// Os valores do TCE-SP "andam" entre uma atualização oficial e outra:
+// projeta o ritmo médio (valor ÷ tempo desde o início do período) até agora.
+function accountLiveValue(acc, field) {
+  const base = Number(acc[field]);
+  const periodStart = new Date(acc.period_start + "T00:00:00").getTime();
+  const asOf = new Date(acc.as_of + "T00:00:00").getTime();
+  const secondsElapsedAtBase = Math.max(1, (asOf - periodStart) / 1000);
+  const ratePerSecond = base / secondsElapsedAtBase;
+  const secondsSinceBase = (Date.now() - asOf) / 1000;
+  return base + ratePerSecond * secondsSinceBase;
+}
+
+const fmtBRL = (v) => "R$ " + Math.round(Number(v) || 0).toLocaleString("pt-BR");
+const fmtBi = (v) => "R$ " + (Number(v) / 1e9).toFixed(2).replace(".", ",") + " bi";
+const fmtShort = (v) => Math.abs(v) >= 1e9 ? fmtBi(v) : "R$ " + Math.round(Number(v) / 1e6).toLocaleString("pt-BR") + " mi";
+const fmtPct = (v) => (v * 100).toFixed(1).replace(".", ",") + "%";
 
 function normalizeText(s) {
   return (s || "").toString().trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -73,6 +119,103 @@ async function subscribeToPush() {
 const sectionTitleStyle = { fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 17, color: "#0F2E52", marginTop: 22, marginBottom: 6 };
 
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');`;
+
+// Classes do layout público e do painel — ficam em CSS (e não inline)
+// porque precisam de hover e de regras diferentes pra celular.
+const LAYOUT_CSS = `
+  .ix-wrap { max-width: 1280px; margin: 0 auto; padding-left: 32px; padding-right: 32px; }
+  .ix-grid-bg { position: relative; overflow: hidden; }
+  .ix-grid-bg::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    background-size: 44px 44px; }
+  .ix-grid-bg > * { position: relative; }
+  .ix-nav a { font-family: 'IBM Plex Sans', sans-serif; font-size: 13.5px; font-weight: 500; color: #B7C6D8; padding: 13px 16px; border-bottom: 2px solid transparent; white-space: nowrap; text-decoration: none; }
+  .ix-nav a:hover { color: #fff; }
+  .ix-nav a.on { color: #fff; border-bottom-color: ${GOLD}; }
+  .ix-footlink { color: #B7C6D8; text-decoration: none; }
+  .ix-footlink:hover { color: #fff; }
+  .ix-footcols { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 32px; }
+  .ix-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #58C48C; display: inline-block; animation: ixPulse 2s infinite; }
+  @keyframes ixPulse { 0% { box-shadow: 0 0 0 0 rgba(88,196,140,.6); } 70% { box-shadow: 0 0 0 7px rgba(88,196,140,0); } 100% { box-shadow: 0 0 0 0 rgba(88,196,140,0); } }
+  .ix-link { color: ${BLUE}; font-weight: 600; font-size: 13.5px; text-decoration: none; }
+  .ix-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+  /* Início: faixa + painel */
+  .ix-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 40px; align-items: end; }
+  .ix-facts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; border-top: 1px solid rgba(255,255,255,.14); }
+  .ix-facts > div { flex: 1; min-width: 150px; padding: 14px 18px 0 0; }
+  .ix-facts > div + div { padding-left: 18px; border-left: 1px solid rgba(255,255,255,.1); }
+  .ix-panel > *, .ix-hero > *, .ix-city > *, .ix-two > *, .ix-three > * { min-width: 0; }
+  .ix-panel { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; margin-top: -50px; position: relative; }
+  .ix-s4 { grid-column: span 4; } .ix-s5 { grid-column: span 5; } .ix-s6 { grid-column: span 6; } .ix-s7 { grid-column: span 7; }
+  .ix-tile { background: #fff; border: 1px solid ${LINE}; border-radius: 14px; padding: 18px; }
+  .ix-tile-top { box-shadow: 0 10px 30px rgba(15,46,82,.10); }
+  .ix-tmap { display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(3, 58px); gap: 6px; margin-top: 14px; }
+  .ix-cell { border: 0; border-radius: 8px; padding: 8px 9px; font: 600 11px 'IBM Plex Sans', sans-serif; line-height: 1.2; text-align: left; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; color: #fff; outline: 2px solid transparent; outline-offset: 1px; transition: transform .15s; }
+  .ix-cell:hover, .ix-cell.on { outline-color: ${GOLD}; transform: scale(1.02); }
+  .ix-cbar { display: grid; grid-template-columns: 118px 1fr 92px; gap: 10px; align-items: center; padding: 6px 0; width: 100%; background: none; border: 0; cursor: pointer; text-align: left; font-family: 'IBM Plex Sans', sans-serif; font-size: 12px; color: ${INK}; }
+  .ix-cbar:hover .ix-cbar-name, .ix-cbar.on .ix-cbar-name { color: ${GOLD}; font-weight: 600; }
+  .ix-city { display: grid; grid-template-columns: 1.1fr 1fr 1fr; overflow: hidden; }
+  .ix-city > div { padding: 24px; }
+  .ix-city > div + div { border-left: 1px solid ${LINE_SOFT}; }
+  .ix-two { display: grid; grid-template-columns: 1.35fr 1fr; gap: 20px; }
+  .ix-sv { display: grid; grid-template-columns: 1fr 190px 90px; gap: 20px; align-items: center; padding: 18px 22px; border-top: 1px solid ${LINE_SOFT}; text-decoration: none; color: inherit; }
+  .ix-sv:hover { background: #FBFAF6; }
+  .ix-ixs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .ix-meth { display: grid; grid-template-columns: 1fr 1fr 1fr 1.1fr; overflow: hidden; }
+  .ix-meth > div { padding: 22px; }
+  .ix-meth > div + div { border-left: 1px solid ${LINE_SOFT}; }
+  .ix-three { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 20px; }
+  .ix-chip { font: 500 13px 'IBM Plex Sans', sans-serif; padding: 8px 14px; border-radius: 999px; border: 1px solid ${LINE}; background: #fff; color: ${BLUE_SOFT}; cursor: pointer; }
+  .ix-chip.on { background: ${BLUE}; border-color: ${BLUE}; color: #fff; }
+  .ix-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+
+  /* Tabela de dados */
+  .ix-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .ix-table th { text-align: right; font: 600 11px 'IBM Plex Sans', sans-serif; text-transform: uppercase; letter-spacing: .05em; color: ${BLUE_SOFT}; padding: 12px 16px; border-bottom: 1px solid ${LINE}; background: #FBFAF6; white-space: nowrap; }
+  .ix-table th:first-child, .ix-table td:first-child { text-align: left; }
+  .ix-table td { padding: 13px 16px; border-bottom: 1px solid ${LINE_SOFT}; text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: ${INK}; white-space: nowrap; }
+  .ix-table td:first-child { font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 14px; }
+  .ix-table tr:hover td { background: #FBFAF6; }
+  .ix-table tr.total td { background: #FBFAF6; font-weight: 600; }
+
+  /* Painel administrativo */
+  .ix-adm { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+  .ix-aside { background: ${BLUE}; color: #B7C6D8; padding: 22px 14px; }
+  .ix-aside-group { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: ${GOLD}; margin: 22px 10px 8px; }
+  .ix-aside button { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; padding: 8px 10px; border-radius: 8px; border: 0; background: none; color: #B7C6D8; font: 400 13.5px 'IBM Plex Sans', sans-serif; cursor: pointer; }
+  .ix-aside button:hover { background: rgba(255,255,255,.06); color: #fff; }
+  .ix-aside button.on { background: rgba(255,255,255,.1); color: #fff; font-weight: 600; }
+
+  @media (max-width: 1080px) {
+    .ix-hero { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+    .ix-ixs { grid-template-columns: 1fr 1fr; }
+    .ix-kpis { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 860px) {
+    .ix-wrap { padding-left: 18px; padding-right: 18px; }
+    .ix-hide-sm { display: none !important; }
+    .ix-logo svg { width: 48px; height: 48px; }
+    .ix-logo div div:nth-child(2) { font-size: 16px !important; }
+    .ix-panel { grid-template-columns: minmax(0, 1fr); }
+    .ix-panel > * { grid-column: auto; }
+    .ix-cbar { grid-template-columns: 96px minmax(0, 1fr) 80px; }
+    .ix-city, .ix-two, .ix-meth, .ix-three { grid-template-columns: 1fr; }
+    .ix-city > div + div, .ix-meth > div + div { border-left: 0; border-top: 1px solid ${LINE_SOFT}; }
+    .ix-sv { grid-template-columns: 1fr auto; }
+    .ix-sv > :nth-child(2) { display: none; }
+    .ix-footcols { grid-template-columns: 1fr 1fr; }
+    .ix-facts > div { min-width: 45%; border-left: 0 !important; padding-left: 0 !important; }
+    .ix-adm { grid-template-columns: 1fr; }
+    .ix-aside { padding: 12px; display: flex; gap: 4px; overflow-x: auto; }
+    .ix-aside-group, .ix-aside .ix-aside-brand { display: none; }
+    .ix-aside button { white-space: nowrap; width: auto; }
+  }
+  @media (max-width: 520px) {
+    .ix-ixs, .ix-kpis { grid-template-columns: 1fr; }
+    .ix-footcols { grid-template-columns: 1fr; }
+  }
+`;
 
 const DEFAULT_QUOTAS = [
   { id: "q13-17-m", label: "13–17 anos · Masculino", target: 12 },
@@ -222,50 +365,176 @@ function PageMeta({ title, description }) {
   return null;
 }
 
-function HeaderBanner() {
+// Símbolo do instituto (círculo + barras + linha de tendência), desenhado em SVG
+// pra ficar nítido em qualquer tamanho. "color" é a cor do traço principal.
+function LogoMark({ size = 56, color = "#fff" }) {
   return (
-    <img
-      src="/header.png"
-      alt="Instituto Índice e Desenvolvimento do ABC"
-      style={{ width: "100%", height: "auto", display: "block" }}
-    />
+    <svg width={size} height={size} viewBox="0 0 200 200" aria-hidden="true" style={{ flexShrink: 0, display: "block" }}>
+      <circle cx="100" cy="100" r="88" fill="none" stroke={color} strokeWidth="7" />
+      <rect x="63" y="105" width="18" height="40" rx="3" fill="#8FB8DE" />
+      <rect x="91" y="85" width="18" height="60" rx="3" fill="#3E7CB1" />
+      <rect x="119" y="63" width="18" height="82" rx="3" fill={color} />
+      <line x1="72" y1="98" x2="100" y2="78" stroke={color} strokeWidth="4" strokeLinecap="round" />
+      <line x1="100" y1="78" x2="128" y2="56" stroke={color} strokeWidth="4" strokeLinecap="round" />
+      <circle cx="72" cy="98" r="4.5" fill={color} />
+      <circle cx="100" cy="78" r="4.5" fill={color} />
+      <circle cx="128" cy="56" r="6" fill={color} />
+    </svg>
   );
 }
 
-function PageFooter() {
+// Logo completo: símbolo + "INSTITUTO / ÍNDICE E DESENVOLVIMENTO DO ABC" com o sublinhado azul.
+function LogoLockup({ size = 64, textSize = 22 }) {
   return (
-    <div style={{ borderTop: `1px solid ${LINE}`, marginTop: 28, paddingTop: 18, textAlign: "center" }}>
-      <div style={{ display: "flex", gap: 12, justifyContent: "center", marginBottom: 12 }}>
-        <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" style={{ width: 32, height: 32, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-          <Instagram size={15} />
-        </a>
-        <a href={FACEBOOK_URL} target="_blank" rel="noopener noreferrer" style={{ width: 32, height: 32, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-          <Facebook size={15} />
-        </a>
-      </div>
-      <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT, marginBottom: 12 }}>
-        <a href="mailto:institutoindiceabc@gmail.com" style={{ color: BLUE_SOFT }}>institutoindiceabc@gmail.com</a> · Santo André/SP — Grande ABC Paulista
-      </div>
-      <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
-        <a href={homePageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Início</a>
-        <a href={aboutPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Sobre</a>
-        <a href={resultsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Pesquisas</a>
-        <a href={accountsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Contas Públicas</a>
-        <a href={indicesPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Índices</a>
-        <a href={partnersPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Parceiros</a>
-        <a href={pointsPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Troque seus pontos</a>
-        <a href={privacyPageUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Política de Privacidade</a>
-      </div>
-      <div style={{ marginTop: 10 }}>
-        <a href={adminUrl()} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 10.5, color: "#B7AF98" }}>Área administrativa</a>
+    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      <LogoMark size={size} />
+      <div>
+        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: Math.round(textSize * 0.55), letterSpacing: "0.28em", color: "#C6D3E2" }}>INSTITUTO</div>
+        <div style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontWeight: 700, fontSize: textSize, lineHeight: 1.12, color: "#fff", letterSpacing: "0.01em" }}>
+          ÍNDICE E DESENVOLVIMENTO<br />DO ABC
+        </div>
+        <div style={{ height: 3, background: "#3E7CB1", marginTop: 6, width: "92%" }} />
       </div>
     </div>
   );
 }
 
-// Menu lateral no computador (acima de 900px de largura) + navegação
-// compacta no celular. Usa apenas CSS (classes .pl-*) para alternar,
-// sem precisar de JavaScript pra detectar o tamanho da tela.
+// Qual item do menu está ativo, a partir da URL atual.
+function currentNavKey() {
+  const p = new URLSearchParams(window.location.search);
+  if (p.get("about") === "1") return "about";
+  if (p.get("results") === "1" || p.get("s")) return "results";
+  if (p.get("contas") === "1") return "contas";
+  if (p.get("indices") === "1") return "indices";
+  if (p.get("partners") === "1") return "partners";
+  if (p.get("privacy") === "1") return "privacy";
+  if (p.get("points") === "1") return "points";
+  return "home";
+}
+
+function useNotifications() {
+  const [status, setStatus] = useState("idle"); // idle | asking | done | error
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") setStatus("done");
+  }, []);
+  const enable = async () => {
+    setStatus("asking"); setError("");
+    try {
+      await subscribeToPush();
+      setStatus("done");
+    } catch (e) {
+      setError(e.message || "Não foi possível ativar as notificações.");
+      setStatus("error");
+    }
+  };
+  return { status, error, enable };
+}
+
+function SiteHeader() {
+  const active = currentNavKey();
+  const notif = useNotifications();
+  const [asOf, setAsOf] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("public_accounts").select("as_of").order("as_of", { ascending: false }).limit(1);
+      if (data && data[0]) setAsOf(data[0].as_of);
+    })();
+  }, []);
+
+  const links = [
+    { key: "home", label: "Início", href: homePageUrl() },
+    { key: "about", label: "Sobre", href: aboutPageUrl() },
+    { key: "results", label: "Pesquisas", href: resultsPageUrl() },
+    { key: "contas", label: "Contas Públicas", href: accountsPageUrl() },
+    { key: "indices", label: "Índices", href: indicesPageUrl() },
+    { key: "partners", label: "Parceiros", href: partnersPageUrl() },
+    { key: "privacy", label: "Política de Privacidade", href: privacyPageUrl() },
+  ];
+
+  return (
+    <header>
+      <div style={{ background: BLUE, color: "#fff" }}>
+        <div className="ix-wrap" style={{ display: "flex", alignItems: "center", gap: 24, paddingTop: 18, paddingBottom: 18 }}>
+          <a href={homePageUrl()} style={{ textDecoration: "none" }} className="ix-logo">
+            <LogoLockup />
+          </a>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 22 }}>
+            {asOf && (
+              <span className="ix-hide-sm" style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: "#C6D3E2" }}>
+                <span className="ix-live-dot" /> Dados atualizados · TCE-SP {new Date(asOf + "T00:00:00").toLocaleDateString("pt-BR")}
+              </span>
+            )}
+            {notif.status === "done" ? (
+              <span className="ix-hide-sm" style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: GOLD_SOFT, display: "flex", alignItems: "center", gap: 6 }}><Check size={14} /> Notificações ativas</span>
+            ) : (
+              <Button variant="gold" onClick={notif.enable} disabled={notif.status === "asking"} style={{ padding: "8px 14px", fontSize: 13 }}>
+                {notif.status === "asking" ? <Loader2 size={14} className="spin" /> : <Bell size={14} />}
+                <span className="ix-hide-sm">Ativar notificações</span>
+              </Button>
+            )}
+          </div>
+        </div>
+        {notif.error && (
+          <div className="ix-wrap" style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: "#F0A49D", paddingBottom: 10, textAlign: "right" }}>{notif.error}</div>
+        )}
+      </div>
+      <nav className="ix-nav" style={{ background: NAVY_DARK, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+        <div className="ix-wrap" style={{ display: "flex", alignItems: "center", overflowX: "auto" }}>
+          {links.map((l, i) => (
+            <a key={l.key} href={l.href} className={active === l.key ? "on" : ""} style={i === 0 ? { paddingLeft: 0 } : undefined}>{l.label}</a>
+          ))}
+          <a href={pointsPageUrl()} className={active === "points" ? "on" : ""} style={{ marginLeft: "auto", color: GOLD_SOFT }}>★ Troque seus pontos</a>
+        </div>
+      </nav>
+    </header>
+  );
+}
+
+function SiteFooter() {
+  const col = (title, items) => (
+    <div>
+      <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: "#fff", fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12, fontWeight: 600 }}>{title}</div>
+      {items.map(([label, href, style]) => (
+        <a key={label} href={href} className="ix-footlink" style={{ display: "block", marginBottom: 8, ...style }}>{label}</a>
+      ))}
+    </div>
+  );
+  return (
+    <footer style={{ background: NAVY_DARK, color: "#B7C6D8", marginTop: 64, padding: "44px 0 90px", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5 }}>
+      <div className="ix-wrap">
+        <div className="ix-footcols">
+          <div>
+            <LogoLockup size={48} textSize={16} />
+            <p style={{ marginTop: 14, lineHeight: 1.6 }}>
+              <a href="mailto:institutoindiceabc@gmail.com" className="ix-footlink">institutoindiceabc@gmail.com</a><br />
+              Santo André/SP — Grande ABC Paulista
+            </p>
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" aria-label="Instagram" style={{ width: 32, height: 32, borderRadius: "50%", background: "#16395F", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}><Instagram size={15} /></a>
+              <a href={FACEBOOK_URL} target="_blank" rel="noopener noreferrer" aria-label="Facebook" style={{ width: 32, height: 32, borderRadius: "50%", background: "#16395F", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}><Facebook size={15} /></a>
+            </div>
+          </div>
+          {col("Dados", [["Pesquisas", resultsPageUrl()], ["Contas Públicas", accountsPageUrl()], ["Índices", indicesPageUrl()]])}
+          {col("Instituto", [["Início", homePageUrl()], ["Sobre", aboutPageUrl()], ["Parceiros", partnersPageUrl()], ["Política de Privacidade", privacyPageUrl()]])}
+          {col("Participe", [["Troque seus pontos", pointsPageUrl()], ["Fale conosco", "mailto:institutoindiceabc@gmail.com"], ["Área administrativa", adminUrl(), { opacity: 0.6 }]])}
+        </div>
+        <div style={{ marginTop: 32, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between", fontSize: 12, color: "#7F93AB", flexWrap: "wrap", gap: 10 }}>
+          <span>© {new Date().getFullYear()} Instituto Índice e Desenvolvimento do ABC</span>
+          <span>Fontes: TCE-SP · IBGE Censo 2022</span>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+// O rodapé agora é desenhado uma vez só pelo PublicLayout (SiteFooter).
+// Mantido vazio porque as páginas ainda o chamam no fim do conteúdo.
+function PageFooter() {
+  return null;
+}
+
 // Ticker fixo no rodapé com as contas públicas do Grande ABC — aparece em
 // toda página pública, buscando os dados uma vez e "andando" visualmente
 // entre uma atualização oficial e outra (mesma lógica do Impostômetro).
@@ -287,38 +556,26 @@ function FixedAccountsTicker() {
 
   if (!accounts || accounts.length === 0) return null;
 
-  const liveValue = (acc, field) => {
-    const base = Number(acc[field]);
-    const periodStart = new Date(acc.period_start + "T00:00:00").getTime();
-    const asOf = new Date(acc.as_of + "T00:00:00").getTime();
-    const secondsElapsedAtBase = Math.max(1, (asOf - periodStart) / 1000);
-    const ratePerSecond = base / secondsElapsedAtBase;
-    const secondsSinceBase = (Date.now() - asOf) / 1000;
-    return base + ratePerSecond * secondsSinceBase;
-  };
-
-  const fmt = (v) => "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-
   const items = accounts.map(a => (
     <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 20px", borderRight: "1px solid rgba(255,255,255,0.1)", whiteSpace: "nowrap" }}>
       <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, fontSize: 11, color: GOLD_SOFT, textTransform: "uppercase", letterSpacing: "0.03em" }}>{a.city}</div>
       <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
         <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 8.5, color: "rgba(255,255,255,0.5)", textTransform: "uppercase" }}>Receita</span>
-        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: "#fff", fontWeight: 600 }}>{fmt(liveValue(a, "receita"))}</span>
+        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: "#fff", fontWeight: 600 }}>{fmtBRL(accountLiveValue(a, "receita"))}</span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
         <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 8.5, color: "rgba(255,255,255,0.5)", textTransform: "uppercase" }}>Despesa</span>
-        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: "#fff", fontWeight: 600 }}>{fmt(liveValue(a, "despesa"))}</span>
+        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: "#fff", fontWeight: 600 }}>{fmtBRL(accountLiveValue(a, "despesa"))}</span>
       </div>
     </div>
   ));
 
   return (
     <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50, background: BLUE, display: "flex", alignItems: "stretch", boxShadow: "0 -2px 10px rgba(0,0,0,0.15)" }}>
-      <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: "10px 14px", background: "#0A2140", borderRight: "1px solid rgba(255,255,255,0.12)" }}>
+      <a href={accountsPageUrl()} style={{ flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: "10px 14px", background: NAVY_DARK, borderRight: "1px solid rgba(255,255,255,0.12)", textDecoration: "none" }}>
         <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, color: GOLD, letterSpacing: "0.04em" }}>GRANDE ABC</div>
         <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 11, color: "#fff" }}>Contas Públicas</div>
-      </div>
+      </a>
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
         <div className="ticker-track" style={{ display: "flex", width: "max-content" }}>
           {items}{items}
@@ -329,61 +586,33 @@ function FixedAccountsTicker() {
 }
 
 function PublicLayout({ children }) {
-  const links = [
-    { label: "Início", href: homePageUrl() },
-    { label: "Sobre", href: aboutPageUrl() },
-    { label: "Pesquisas", href: resultsPageUrl() },
-    { label: "Contas Públicas", href: accountsPageUrl() },
-    { label: "Índices", href: indicesPageUrl() },
-    { label: "Parceiros", href: partnersPageUrl() },
-    { label: "Troque seus pontos", href: pointsPageUrl() },
-    { label: "Política de Privacidade", href: privacyPageUrl() },
-  ];
   return (
     <div>
-      <HeaderBanner />
-      <div className="pl-mobile-nav" style={{ background: "#fff", borderBottom: `1px solid ${LINE}`, padding: "10px 16px", display: "flex", gap: 20, justifyContent: "center", flexWrap: "wrap" }}>
-        {links.slice(0, 5).map(l => (
-          <a key={l.href} href={l.href} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, fontWeight: 600 }}>{l.label}</a>
-        ))}
-      </div>
-      <div className="pl-shell">
-        <aside className="pl-sidebar" style={{ flexDirection: "column", width: 230, flexShrink: 0, padding: "28px 20px", borderRight: `1px solid ${LINE}`, minHeight: "70vh", background: "#fff" }}>
-          <nav style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 32 }}>
-            {links.map(l => (
-              <a key={l.href} href={l.href} style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, fontWeight: 600 }}>{l.label}</a>
-            ))}
-          </nav>
-          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11, color: "#B7AF98", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Contato</div>
-          <a href="mailto:institutoindiceabc@gmail.com" style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, display: "block", marginBottom: 14, wordBreak: "break-word" }}>institutoindiceabc@gmail.com</a>
-          <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
-            <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" style={{ width: 30, height: 30, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-              <Instagram size={14} />
-            </a>
-            <a href={FACEBOOK_URL} target="_blank" rel="noopener noreferrer" style={{ width: 30, height: 30, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-              <Facebook size={14} />
-            </a>
-          </div>
-          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: "#B7AF98", lineHeight: 1.6 }}>
-            Instituto Índice e Desenvolvimento do ABC<br />Santo André/SP — Grande ABC Paulista
-          </div>
-        </aside>
-        <div className="pl-content" style={{ paddingBottom: 54 }}>
-          {children}
-        </div>
-      </div>
+      <SiteHeader />
+      <main style={{ minHeight: "50vh" }}>{children}</main>
+      <SiteFooter />
       <FixedAccountsTicker />
     </div>
   );
 }
 
-// Faixa azul-marinho que estende a cor do cabeçalho pra dentro da página,
-// em vez de cortar seco pro fundo claro. Usada no topo de toda página pública.
+// Faixa azul-marinho (com a grade sutil) que abre cada página pública.
 function PageBand({ children }) {
   return (
-    <div style={{ background: BLUE, padding: "44px 0" }}>
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "0 16px" }}>
+    <div className="ix-grid-bg" style={{ background: BLUE, padding: "40px 0 44px" }}>
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "0 16px", position: "relative" }}>
         {children}
+      </div>
+    </div>
+  );
+}
+
+// Cabeçalho simples (só o logo) — usado no login do painel.
+function HeaderBanner() {
+  return (
+    <div style={{ background: BLUE }}>
+      <div className="ix-wrap" style={{ paddingTop: 18, paddingBottom: 18 }}>
+        <a href={homePageUrl()} style={{ textDecoration: "none", display: "inline-block" }}><LogoLockup /></a>
       </div>
     </div>
   );
@@ -1284,15 +1513,21 @@ function PointsExchange() {
 // ---------- Home page (public, standalone) ----------
 function HomePage() {
   const [totalResponses, setTotalResponses] = useState(null);
-  const [notifStatus, setNotifStatus] = useState("idle"); // idle | asking | done | error
-  const [notifError, setNotifError] = useState("");
   const [activeSurveys, setActiveSurveys] = useState(null);
+  const [surveyCounts, setSurveyCounts] = useState({});
   const [upcoming, setUpcoming] = useState(null);
   const [highlight, setHighlight] = useState(null);
-  const [subscriberCount, setSubscriberCount] = useState(null);
   const [exampleReward, setExampleReward] = useState(null);
-  const [citiesWithSurvey, setCitiesWithSurvey] = useState(null);
-  const [openFaq, setOpenFaq] = useState(null);
+  const [surveysByCity, setSurveysByCity] = useState({});
+  const [activeCount, setActiveCount] = useState(null);
+  const [publishedByCity, setPublishedByCity] = useState({});
+  const [accounts, setAccounts] = useState(null);
+  const [indices, setIndices] = useState([]);
+  const [indicesByCity, setIndicesByCity] = useState({});
+  const [selectedCity, setSelectedCity] = useState("São Caetano do Sul");
+  const [openFaq, setOpenFaq] = useState(0);
+  const [, forceTick] = useState(0);
+  const notif = useNotifications();
 
   useEffect(() => {
     (async () => {
@@ -1301,42 +1536,54 @@ function HomePage() {
         { data: activeData },
         { data: upcomingData },
         { data: highlightData },
-        { count: subCount },
         { data: rewardData },
         { data: allSurveys },
+        { data: accountsData },
+        { data: indicesData },
       ] = await Promise.all([
         supabase.from("responses").select("id", { count: "exact", head: true }),
-        supabase.from("surveys").select("id, title, city, points").eq("status", "ativa").order("created_at", { ascending: false }).limit(3),
+        supabase.from("surveys").select("id, title, city, points, quotas, questions").eq("status", "ativa").order("created_at", { ascending: false }).limit(4),
         supabase.from("upcoming_surveys").select("*").order("created_at", { ascending: false }).limit(2),
         supabase.from("surveys").select("id, title, highlight_stat, highlight_label").eq("published", true).not("highlight_stat", "is", null).order("created_at", { ascending: false }).limit(1),
-        supabase.from("subscribers").select("id", { count: "exact", head: true }),
         supabase.from("rewards").select("name, partner_name, points_cost").eq("active", true).order("points_cost", { ascending: true }).limit(1),
-        supabase.from("surveys").select("city"),
+        supabase.from("surveys").select("city, status, published"),
+        supabase.from("public_accounts").select("*").order("receita", { ascending: false }),
+        supabase.from("indices").select("*").order("created_at", { ascending: false }),
       ]);
       setTotalResponses(respCount || 0);
       setActiveSurveys(activeData || []);
       setUpcoming(upcomingData || []);
       setHighlight(highlightData && highlightData[0] ? highlightData[0] : null);
-      setSubscriberCount(subCount || 0);
       setExampleReward(rewardData && rewardData[0] ? rewardData[0] : null);
-      setCitiesWithSurvey(new Set((allSurveys || []).map(s => s.city)));
+      const inField = {}, published = {};
+      (allSurveys || []).forEach(s => {
+        if (s.status === "ativa") inField[s.city] = (inField[s.city] || 0) + 1;
+        if (s.published) published[s.city] = (published[s.city] || 0) + 1;
+      });
+      setSurveysByCity(inField);
+      setActiveCount((allSurveys || []).filter(x => x.status === "ativa").length);
+      setPublishedByCity(published);
+      setAccounts(accountsData || []);
+      setIndices((indicesData || []).slice(0, 4));
+      const idxCity = {};
+      (indicesData || []).forEach(i => { idxCity[i.city] = (idxCity[i.city] || 0) + 1; });
+      setIndicesByCity(idxCity);
+
+      // Quantas respostas cada pesquisa aberta já tem, pra barra de cotas
+      const counts = {};
+      await Promise.all((activeData || []).map(async s => {
+        const { data } = await supabase.rpc("get_quota_counts", { p_survey_id: s.id });
+        counts[s.id] = (data || []).reduce((sum, r) => sum + Number(r.response_count), 0);
+      }));
+      setSurveyCounts(counts);
     })();
-    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-      setNotifStatus("done");
-    }
   }, []);
 
-  const handleEnableNotifications = async () => {
-    setNotifStatus("asking");
-    setNotifError("");
-    try {
-      await subscribeToPush();
-      setNotifStatus("done");
-    } catch (e) {
-      setNotifError(e.message || "Não foi possível ativar as notificações.");
-      setNotifStatus("error");
-    }
-  };
+  // Faz os números "ao vivo" andarem a cada segundo
+  useEffect(() => {
+    const interval = setInterval(() => forceTick(n => n + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const FAQ = [
     { q: "Minhas respostas são anônimas?", a: "Sim. Não pedimos nome nem e-mail para responder — só se você quiser participar do programa de pontos depois." },
@@ -1345,162 +1592,448 @@ function HomePage() {
     { q: "Como sei que os dados são confiáveis?", a: "Seguimos amostragem estatística real, com coleta em dobro e exclusão de respostas suspeitas antes de qualquer publicação." },
   ];
 
+  // ---- números derivados das contas públicas ----
+  const acc = accounts || [];
+  const rows = acc.map(a => {
+    const receita = Number(a.receita), despesa = Number(a.despesa);
+    const pop = ABC_POPULATION[a.city] || null;
+    return { ...a, receita, despesa, pop, gap: receita > 0 ? (despesa - receita) / receita : 0, perCapita: pop ? receita / pop : null };
+  });
+  const totalReceita = rows.reduce((s, r) => s + r.receita, 0);
+  const totalDespesa = rows.reduce((s, r) => s + r.despesa, 0);
+  const liveReceita = acc.reduce((s, a) => s + accountLiveValue(a, "receita"), 0);
+  const liveDespesa = acc.reduce((s, a) => s + accountLiveValue(a, "despesa"), 0);
+  const totalPop = Object.values(ABC_POPULATION).reduce((s, n) => s + n, 0);
+  const avgPerCapita = totalPop ? totalReceita / totalPop : 0;
+  const maxDespesa = Math.max(1, ...rows.map(r => r.despesa));
+  const gaps = rows.map(r => r.gap);
+  const gapMin = Math.min(...gaps), gapMax = Math.max(...gaps);
+  const regionGap = totalReceita > 0 ? (totalDespesa - totalReceita) / totalReceita : 0;
+  const ranking = rows.filter(r => r.perCapita).sort((a, b) => b.perCapita - a.perCapita);
+  const maxPerCapita = ranking.length ? ranking[0].perCapita : 1;
+  const mostRecentAsOf = acc.reduce((m, a) => (!m || a.as_of > m ? a.as_of : m), null);
+
+  // Cor do "mapa": azul (despesa pouco acima da receita) → vermelho (muito acima)
+  const tileColor = (gap) => {
+    const t = gapMax > gapMin ? (gap - gapMin) / (gapMax - gapMin) : 0.5;
+    const mix = (a, b, k) => a.map((x, i) => Math.round(x + (b[i] - x) * k));
+    const c = t < 0.5 ? mix([62, 94, 134], [156, 90, 90], t * 2) : mix([156, 90, 90], [216, 115, 106], (t - 0.5) * 2);
+    return `rgb(${c.join(",")})`;
+  };
+
+  const city = rows.find(r => r.city === selectedCity);
+  const cityRank = city ? ranking.findIndex(r => r.city === city.city) + 1 : 0;
+
+  const kick = (text, color = GOLD) => (
+    <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, letterSpacing: "0.06em", textTransform: "uppercase", color }}>{text}</div>
+  );
+  const tileHead = (title, tag) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, fontWeight: 600, color: BLUE_SOFT }}>
+      <span>{title}</span>
+      {tag && <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: GOLD, letterSpacing: "0.04em", fontWeight: 500 }}>{tag}</span>}
+    </div>
+  );
+  const sectionHead = (kicker, title, right) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 20, marginBottom: 22, flexWrap: "wrap" }}>
+      <div>
+        {kick(kicker)}
+        <h2 style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 32, color: INK, margin: "6px 0 0", letterSpacing: "-0.01em" }}>{title}</h2>
+      </div>
+      {right}
+    </div>
+  );
+  const spark = (color, points) => (
+    <svg viewBox="0 0 200 34" preserveAspectRatio="none" style={{ display: "block", width: "100%", height: 34, marginTop: 12 }}>
+      <polyline points={points} fill="none" stroke={color} strokeWidth="2" />
+    </svg>
+  );
+  const kv = (label, value, color) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "10px 0", borderBottom: `1px dashed ${LINE_SOFT}`, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT }}>
+      {label}<b style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500, color: color || INK, fontSize: 14.5 }}>{value}</b>
+    </div>
+  );
+  const bigNumber = { fontFamily: "'IBM Plex Mono', monospace", fontSize: 21, fontWeight: 500, color: BLUE, marginTop: 10, whiteSpace: "nowrap", letterSpacing: "-0.02em" };
+  const small = { fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: MUTED, marginTop: 4 };
+
   return (
     <PublicLayout>
-      <PageMeta title="Início" description="Instituto Índice e Desenvolvimento do ABC — pesquisas e índices estatisticamente rigorosos sobre o Grande ABC Paulista." />
+      <PageMeta title="Início" description="Instituto Índice e Desenvolvimento do ABC — pesquisas, contas públicas e índices estatisticamente rigorosos sobre o Grande ABC Paulista." />
 
-      <PageBand>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 28 }} className="hero-grid-inline">
+      {/* ---------- faixa de abertura ---------- */}
+      <div className="ix-grid-bg" style={{ background: BLUE, color: "#fff", padding: "40px 0 86px" }}>
+        <div className="ix-wrap ix-hero">
           <div>
-            <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 64, lineHeight: 0.95, color: GOLD_SOFT, letterSpacing: "-0.02em" }}>
-              {totalResponses === null ? "…" : totalResponses}
-            </div>
-            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: "#fff", lineHeight: 1.4, marginTop: 6, maxWidth: 220 }}>
-              respostas coletadas pelo Instituto até agora
-            </div>
-          </div>
-          <div>
-            <h1 style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 26, lineHeight: 1.2, color: "#fff", margin: "0 0 12px" }}>
-              Instituto Índice e Desenvolvimento do ABC
+            {kick("Painel do Grande ABC")}
+            <h1 style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 42, lineHeight: 1.04, letterSpacing: "-0.015em", margin: "14px 0 16px" }}>
+              O Grande ABC <em style={{ color: GOLD_SOFT }}>em números</em>.
             </h1>
-            <p style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 15.5, lineHeight: 1.6, color: GOLD_SOFT, maxWidth: "50ch", margin: 0 }}>
+            <p style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 17, lineHeight: 1.55, color: GOLD_SOFT, maxWidth: "54ch", margin: 0 }}>
               Gerar conhecimento estatisticamente rigoroso sobre a realidade do Grande ABC, para orientar decisões públicas, privadas e comunitárias com dados confiáveis.
             </p>
           </div>
-        </div>
-      </PageBand>
-
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "36px 16px 20px" }}>
-        {notifStatus !== "done" && (
-          <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 14, marginBottom: 28, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <Bell size={20} color={GOLD} style={{ flexShrink: 0 }} />
-            <div style={{ flex: 1, minWidth: 180 }}>
-              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 13, color: INK }}>Ative as notificações</div>
-              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>
-                Saiba na hora quando abrir uma pesquisa nova.
-                {notifError && <span style={{ color: "#8A3B3B" }}> {notifError}</span>}
-              </div>
-            </div>
-            <Button variant="gold" onClick={handleEnableNotifications} disabled={notifStatus === "asking"}>
-              {notifStatus === "asking" ? <Loader2 size={14} className="spin" /> : "Ativar"}
-            </Button>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <a href={resultsPageUrl()} style={{ textDecoration: "none" }}><Button variant="gold" style={{ padding: "12px 18px", fontSize: 14 }}>Participar de uma pesquisa →</Button></a>
+            <a href={accountsPageUrl()} style={{ textDecoration: "none" }}><Button variant="ghost" style={{ padding: "12px 18px", fontSize: 14, color: "#fff", borderColor: "rgba(255,255,255,0.3)" }}>Explorar contas públicas</Button></a>
           </div>
-        )}
-
-        {/* 1. Destaque de resultado publicado */}
-        {highlight && (
-          <a href={resultsSurveyUrl(highlight.id)} style={{ display: "flex", gap: 24, alignItems: "flex-end", flexWrap: "wrap", padding: "28px 0", borderTop: `1px solid ${LINE}`, borderBottom: `1px solid ${LINE}`, margin: "0 0 32px", textDecoration: "none" }}>
-            <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 64, lineHeight: 0.9, color: BLUE, letterSpacing: "-0.02em" }}>{highlight.highlight_stat}</div>
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD, marginBottom: 4 }}>Achado recente</div>
-              <p style={{ fontFamily: "'Newsreader', serif", fontSize: 16, color: INK, lineHeight: 1.45, margin: "0 0 6px", maxWidth: "34ch" }}>{highlight.highlight_label}</p>
-              <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT }}>Ver pesquisa completa →</span>
-            </div>
-          </a>
-        )}
-
-        {/* 2. Como fazemos pesquisa */}
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, marginBottom: 6 }}>Metodologia</div>
-        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: INK, marginBottom: 4 }}>Como fazemos pesquisa</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 0, margin: "20px 0" }} className="steps-grid">
-          {[
-            { n: "01", t: "Amostra representativa", d: "Cotas por idade e sexo, baseadas no Censo IBGE de cada cidade." },
-            { n: "02", t: "Coleta em dobro", d: "Coletamos cerca de 2× a amostra necessária, prevendo exclusões." },
-            { n: "03", t: "Tratamento antes de publicar", d: "Excluímos respostas suspeitas (muito rápidas, IPs duplicados, fora da cidade)." },
-          ].map(s => (
-            <div key={s.n} style={{ padding: "16px 16px 16px 0", borderTop: `2px solid ${GOLD}` }}>
-              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD, marginBottom: 6 }}>{s.n}</div>
-              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14, color: INK, marginBottom: 4 }}>{s.t}</div>
-              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, lineHeight: 1.5 }}>{s.d}</div>
-            </div>
-          ))}
+          <div className="ix-facts">
+            {[
+              ["7", "Municípios cobertos"],
+              [(totalPop / 1e6).toFixed(2).replace(".", ",") + " mi", "População da região"],
+              [activeCount === null ? "…" : activeCount, "Pesquisas em campo"],
+              [totalResponses === null ? "…" : totalResponses.toLocaleString("pt-BR"), "Respostas coletadas"],
+              [activeSurveys && activeSurveys[0] ? (activeSurveys[0].points || 5) : 5, "Pontos por pesquisa"],
+            ].map(([v, l]) => (
+              <div key={l}>
+                <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 18, color: GOLD_SOFT }}>{v}</div>
+                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: "#B7C6D8" }}>{l}</div>
+              </div>
+            ))}
+          </div>
         </div>
+      </div>
 
-        {/* 3. Cobertura regional */}
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, marginTop: 32, marginBottom: 6 }}>Cobertura</div>
-        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: INK, marginBottom: 4 }}>Grande ABC</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "20px 0 32px" }}>
-          {ABC_CITIES.map(c => {
-            const active = citiesWithSurvey && citiesWithSurvey.has(c);
-            return (
-              <span key={c} style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, padding: "6px 12px", borderRadius: 14, background: active ? BLUE : "transparent", color: active ? "#fff" : BLUE_SOFT, border: active ? "none" : `1px dashed ${LINE}` }}>
-                {c}
-              </span>
-            );
-          })}
-        </div>
-
-        {/* 4. Pesquisas (ativas + em breve) */}
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, marginBottom: 6 }}>Participe</div>
-        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: INK, marginBottom: 4 }}>Pesquisas</div>
-        {activeSurveys === null ? (
-          <Loader2 className="spin" size={16} color={BLUE_SOFT} style={{ marginTop: 16 }} />
+      {/* ---------- painel de dados ---------- */}
+      <div className="ix-wrap">
+        {accounts === null ? (
+          <div className="ix-panel"><div className="ix-tile ix-tile-top" style={{ gridColumn: "span 12", textAlign: "center", padding: 40 }}><Loader2 className="spin" size={20} color={BLUE_SOFT} /></div></div>
         ) : (
-          <>
-            {activeSurveys.map(s => (
-              <a key={s.id} href={surveyPublicUrl(s.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 20, padding: "20px 0", borderTop: `1px solid ${LINE}`, textDecoration: "none" }}>
-                <div>
-                  <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 15, color: INK }}>{s.title}</div>
-                  <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT, marginTop: 3 }}>{s.city}</div>
-                </div>
-                <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: GOLD, whiteSpace: "nowrap" }}>{s.points || 5} pontos</div>
-              </a>
-            ))}
-            {(upcoming || []).map(u => (
-              <div key={u.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 20, padding: "20px 0", borderTop: `1px dashed ${LINE}`, opacity: 0.75 }}>
-                <div>
-                  <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 15, color: INK }}>{u.title}</div>
-                  <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: BLUE_SOFT, marginTop: 3 }}>{u.city}</div>
-                </div>
-                <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: BLUE_SOFT, whiteSpace: "nowrap" }}>Em breve</div>
+          <div className="ix-panel">
+            <div className="ix-tile ix-tile-top ix-s4">
+              {tileHead("Receita do Grande ABC", "AO VIVO")}
+              <div style={bigNumber}>{fmtBRL(liveReceita)}</div>
+              <div style={small}>projeção a partir do TCE-SP</div>
+              {spark(BLUE, "0,30 30,27 60,25 90,20 120,17 150,12 200,4")}
+            </div>
+            <div className="ix-tile ix-tile-top ix-s4">
+              {tileHead("Despesa do Grande ABC", "AO VIVO")}
+              <div style={bigNumber}>{fmtBRL(liveDespesa)}</div>
+              <div style={small}>projeção a partir do TCE-SP</div>
+              {spark(GOLD, "0,31 30,27 60,23 90,19 120,14 150,9 200,2")}
+            </div>
+            <div className="ix-tile ix-tile-top ix-s4">
+              {tileHead("Diferença", "DESPESA − RECEITA")}
+              <div style={{ ...bigNumber, color: liveDespesa > liveReceita ? RED : "#2F7A55" }}>{liveDespesa > liveReceita ? "−" : "+"}{fmtBRL(Math.abs(liveDespesa - liveReceita))}</div>
+              <div style={small}>despesa {fmtPct(Math.abs(regionGap))} {regionGap >= 0 ? "acima" : "abaixo"} da receita</div>
+              {spark(RED, "0,20 30,21 60,22 90,23 120,24 150,26 200,28")}
+            </div>
+
+            <div className="ix-tile ix-s5">
+              {tileHead("Mapa do Grande ABC", "DESPESA ACIMA DA RECEITA")}
+              <div className="ix-tmap">
+                {rows.filter(r => ABC_MAP_TILES[r.city]).map(r => (
+                  <button key={r.city} className={`ix-cell ${selectedCity === r.city ? "on" : ""}`} onClick={() => setSelectedCity(r.city)}
+                    style={{ gridArea: ABC_MAP_TILES[r.city].area, background: tileColor(r.gap) }}>
+                    <span>{ABC_MAP_TILES[r.city].short}</span>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, fontWeight: 400, opacity: 0.9 }}>{r.gap >= 0 ? "+" : ""}{fmtPct(r.gap)}</span>
+                  </button>
+                ))}
               </div>
-            ))}
-            {activeSurveys.length === 0 && (!upcoming || upcoming.length === 0) && (
-              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, padding: "16px 0" }}>Nenhuma pesquisa disponível no momento.</div>
-            )}
-          </>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11, color: MUTED }}>
+                menor <span style={{ flex: 1, maxWidth: 160, height: 6, borderRadius: 3, background: "linear-gradient(90deg, #3E5E86, #9C5A5A, #D8736A)" }} /> maior · clique numa cidade
+              </div>
+            </div>
+
+            <div className="ix-tile ix-s7">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                {tileHead("Receita × despesa por município")}
+                <span style={{ display: "flex", gap: 14, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11, color: MUTED }}>
+                  <span><i style={{ display: "inline-block", width: 10, height: 4, borderRadius: 2, background: BLUE, marginRight: 5, verticalAlign: 2 }} />Receita</span>
+                  <span><i style={{ display: "inline-block", width: 10, height: 4, borderRadius: 2, background: GOLD, marginRight: 5, verticalAlign: 2 }} />Despesa</span>
+                </span>
+              </div>
+              <div style={{ marginTop: 10 }}>
+                {rows.map(r => (
+                  <button key={r.city} className={`ix-cbar ${selectedCity === r.city ? "on" : ""}`} onClick={() => setSelectedCity(r.city)}>
+                    <span className="ix-cbar-name" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ABC_MAP_TILES[r.city]?.short || r.city}</span>
+                    <span style={{ position: "relative", height: 16 }}>
+                      <i style={{ position: "absolute", left: 0, top: 1, height: 6, borderRadius: 3, background: BLUE, width: `${(r.receita / maxDespesa) * 100}%` }} />
+                      <i style={{ position: "absolute", left: 0, top: 9, height: 6, borderRadius: 3, background: GOLD, width: `${(r.despesa / maxDespesa) * 100}%` }} />
+                    </span>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, textAlign: "right", whiteSpace: "nowrap", color: r.despesa > r.receita ? RED : "#2F7A55" }}>
+                      {r.despesa > r.receita ? "−" : "+"}{fmtShort(Math.abs(r.despesa - r.receita))}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="ix-tile ix-s6">
+              {tileHead("Receita por habitante", "R$ / HAB.")}
+              <div style={{ marginTop: 8 }}>
+                {ranking.map((r, i) => (
+                  <div key={r.city} style={{ display: "grid", gridTemplateColumns: "18px 1fr auto", gap: 10, alignItems: "center", padding: "7px 0", borderBottom: i === ranking.length - 1 ? "none" : `1px solid ${LINE_SOFT}`, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5 }}>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, color: MUTED }}>{i + 1}</span>
+                    <span>
+                      {ABC_MAP_TILES[r.city]?.short || r.city}
+                      <div style={{ height: 3, background: PAPER_DARK, borderRadius: 2, marginTop: 4 }}>
+                        <div style={{ height: "100%", width: `${(r.perCapita / maxPerCapita) * 100}%`, background: i === 0 ? GOLD : "#3E7CB1", borderRadius: 2 }} />
+                      </div>
+                    </span>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12 }}>{fmtBRL(r.perCapita)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="ix-tile ix-s6" style={{ display: "flex", flexDirection: "column" }}>
+              {tileHead("Pesquisas em campo", "AGORA")}
+              <div style={{ marginTop: 6 }}>
+                {(activeSurveys || []).length === 0 && (
+                  <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: MUTED, padding: "14px 0" }}>Nenhuma pesquisa aberta no momento.</div>
+                )}
+                {(activeSurveys || []).map(s => (
+                  <a key={s.id} href={surveyPublicUrl(s.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: `1px solid ${LINE_SOFT}`, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: INK, textDecoration: "none" }}>
+                    <span><b style={{ fontWeight: 600 }}>{s.title}</b><span style={{ color: MUTED, fontSize: 12 }}> · {s.city}</span></span>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: "#8A6412", background: "#FBF3E2", border: "1px solid #F0E0BA", padding: "2px 8px", borderRadius: 999, whiteSpace: "nowrap" }}>+{s.points || 5} pts</span>
+                  </a>
+                ))}
+              </div>
+              {(activeSurveys || []).length > 0 && (
+                <a href={surveyPublicUrl(activeSurveys[0].id)} style={{ marginTop: "auto", paddingTop: 14, textDecoration: "none", alignSelf: "flex-start" }}>
+                  <Button variant="gold" style={{ padding: "8px 14px", fontSize: 13 }}>Responder e ganhar {activeSurveys[0].points || 5} pontos →</Button>
+                </a>
+              )}
+            </div>
+          </div>
         )}
 
-        {/* 5. Prova social + programa de pontos */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 20, margin: "36px 0" }} className="two-col-grid">
-          <div>
-            <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 38, color: BLUE, lineHeight: 1 }}>{subscriberCount === null ? "…" : subscriberCount}</div>
-            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, marginTop: 4 }}>pessoas já participaram das nossas pesquisas</div>
+        {/* ---------- painel por cidade ---------- */}
+        {city && (
+          <section style={{ paddingTop: 56 }}>
+            {sectionHead("Raio-X municipal", "Painel por cidade",
+              <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: BLUE_SOFT, fontSize: 14, maxWidth: "48ch", margin: 0 }}>Escolha um município para ver contas públicas, população, pesquisas e índices num só lugar.</p>
+            )}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+              {rows.map(r => (
+                <button key={r.city} className={`ix-chip ${selectedCity === r.city ? "on" : ""}`} onClick={() => setSelectedCity(r.city)}>{r.city}</button>
+              ))}
+            </div>
+            <div className="ix-city" style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 14 }}>
+              <div>
+                {kick("Município")}
+                <div style={{ fontFamily: "'Newsreader', serif", fontSize: 30, fontWeight: 500, lineHeight: 1.1, color: INK, marginTop: 4 }}>{city.city}</div>
+                {city.pop && (
+                  <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, marginTop: 6 }}>
+                    {city.pop.toLocaleString("pt-BR")} habitantes · {fmtPct(city.pop / totalPop)} da população do ABC
+                  </div>
+                )}
+                {city.perCapita && (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, margin: "18px 0 5px" }}>
+                      <span>Receita por habitante</span><b style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500, color: INK }}>{fmtBRL(city.perCapita)}</b>
+                    </div>
+                    <div style={{ height: 8, background: PAPER_DARK, borderRadius: 4, position: "relative" }}>
+                      <i style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${(city.perCapita / maxPerCapita) * 100}%`, background: BLUE, borderRadius: 4 }} />
+                      <u style={{ position: "absolute", top: -4, bottom: -4, width: 2, background: GOLD, left: `${(avgPerCapita / maxPerCapita) * 100}%` }} />
+                    </div>
+                    <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11, color: MUTED, marginTop: 6 }}>
+                      <span style={{ display: "inline-block", width: 8, height: 8, background: GOLD, marginRight: 5 }} />média do Grande ABC: {fmtBRL(avgPerCapita)}
+                    </div>
+                  </>
+                )}
+                <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, margin: "16px 0 5px" }}>
+                  <span>Despesa {city.gap >= 0 ? "acima" : "abaixo"} da receita</span><b style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500, color: city.gap >= 0 ? RED : "#2F7A55" }}>{city.gap >= 0 ? "+" : ""}{fmtPct(city.gap)}</b>
+                </div>
+                <div style={{ height: 8, background: PAPER_DARK, borderRadius: 4, position: "relative" }}>
+                  <i style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${gapMax > 0 ? Math.max(0, city.gap / gapMax) * 100 : 0}%`, background: RED, borderRadius: 4 }} />
+                  {gapMax > 0 && <u style={{ position: "absolute", top: -4, bottom: -4, width: 2, background: GOLD, left: `${Math.max(0, regionGap / gapMax) * 100}%` }} />}
+                </div>
+              </div>
+              <div>
+                {kick("Contas públicas · TCE-SP")}
+                <div style={{ marginTop: 8 }}>
+                  {kv("Receita", fmtBRL(city.receita))}
+                  {kv("Despesa", fmtBRL(city.despesa))}
+                  {kv("Diferença", `${city.despesa > city.receita ? "−" : "+"}${fmtBRL(Math.abs(city.despesa - city.receita))}`, city.despesa > city.receita ? RED : "#2F7A55")}
+                  {kv("Participação na receita do ABC", fmtPct(totalReceita ? city.receita / totalReceita : 0))}
+                  {cityRank > 0 && kv("Posição em receita/hab.", `${cityRank}º de ${ranking.length}`)}
+                </div>
+                {city.as_of && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: MUTED, marginTop: 10 }}>Consolidado de {new Date(city.as_of + "T00:00:00").toLocaleDateString("pt-BR")}</div>}
+              </div>
+              <div>
+                {kick("Instituto Índice ABC")}
+                <div style={{ marginTop: 8 }}>
+                  {kv("Pesquisas em campo", surveysByCity[city.city] || 0)}
+                  {kv("Resultados publicados", publishedByCity[city.city] || 0)}
+                  {kv("Índices compilados", indicesByCity[city.city] || 0)}
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 18 }}>
+                  {surveysByCity[city.city] ? (
+                    <a href={resultsPageUrl()} style={{ textDecoration: "none" }}><Button variant="gold" style={{ padding: "8px 14px", fontSize: 13 }}>Responder pesquisa desta cidade →</Button></a>
+                  ) : notif.status === "done" ? (
+                    <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: "#2F7A55" }}><Check size={13} style={{ verticalAlign: -2 }} /> Você será avisado quando abrir pesquisa.</span>
+                  ) : (
+                    <Button variant="ghost" onClick={notif.enable} disabled={notif.status === "asking"} style={{ padding: "8px 14px", fontSize: 13 }}><Bell size={13} /> Avise-me quando abrir pesquisa</Button>
+                  )}
+                  {indicesByCity[city.city] > 0 && <a href={indicesPageUrl()} className="ix-link" style={{ alignSelf: "center" }}>Ver índices →</a>}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ---------- pesquisas + achado ---------- */}
+        <section style={{ paddingTop: 56 }}>
+          <div className={highlight ? "ix-two" : ""}>
+            <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 14, overflow: "hidden" }}>
+              <div style={{ padding: "16px 22px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <b style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 14, color: INK }}>Pesquisas abertas e em breve</b>
+                <a href={resultsPageUrl()} className="ix-link">Ver todas →</a>
+              </div>
+              {activeSurveys === null ? (
+                <div style={{ padding: 22 }}><Loader2 className="spin" size={16} color={BLUE_SOFT} /></div>
+              ) : (
+                <>
+                  {activeSurveys.map(s => {
+                    const target = (s.quotas || []).reduce((sum, q) => sum + (Number(q.target) || 0), 0);
+                    const got = surveyCounts[s.id] || 0;
+                    const pct = target > 0 ? Math.min(100, Math.round((got / target) * 100)) : 0;
+                    return (
+                      <a key={s.id} href={surveyPublicUrl(s.id)} className="ix-sv">
+                        <div>
+                          <div style={{ fontFamily: "'Newsreader', serif", fontSize: 19, fontWeight: 500, color: INK }}>{s.title}</div>
+                          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, marginTop: 2 }}>{s.city} · {(s.questions || []).length} {(s.questions || []).length === 1 ? "pergunta" : "perguntas"} · anônima</div>
+                        </div>
+                        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: MUTED }}>
+                          Cotas preenchidas · {pct}%
+                          <div style={{ height: 6, background: PAPER_DARK, borderRadius: 3, marginTop: 5, overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.max(2, pct)}%`, background: "#3E7CB1" }} /></div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: "#8A6412", background: "#FBF3E2", border: "1px solid #F0E0BA", padding: "3px 9px", borderRadius: 999, whiteSpace: "nowrap" }}>+{s.points || 5} pts</span>
+                        </div>
+                      </a>
+                    );
+                  })}
+                  {(upcoming || []).map(u => (
+                    <div key={u.id} className="ix-sv" style={{ opacity: 0.6 }}>
+                      <div>
+                        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 19, fontWeight: 500, color: INK }}>{u.title}</div>
+                        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, marginTop: 2 }}>{u.city}</div>
+                      </div>
+                      <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: MUTED }}>Em breve</div>
+                      <div />
+                    </div>
+                  ))}
+                  {activeSurveys.length === 0 && (!upcoming || upcoming.length === 0) && (
+                    <div style={{ padding: "18px 22px", borderTop: `1px solid ${LINE_SOFT}`, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT }}>Nenhuma pesquisa disponível no momento.</div>
+                  )}
+                </>
+              )}
+              {notif.status !== "done" && (
+                <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "14px 22px", background: PAPER, borderTop: `1px solid ${LINE_SOFT}`, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, flexWrap: "wrap" }}>
+                  <Bell size={16} color={GOLD} />
+                  <span style={{ flex: 1, minWidth: 180 }}>
+                    Saiba na hora quando abrir uma pesquisa nova.
+                    {notif.error && <span style={{ color: "#8A3B3B" }}> {notif.error}</span>}
+                  </span>
+                  <Button variant="primary" onClick={notif.enable} disabled={notif.status === "asking"} style={{ padding: "7px 13px", fontSize: 13 }}>
+                    {notif.status === "asking" ? <Loader2 size={14} className="spin" /> : "Ativar"}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {highlight && (
+              <a href={resultsSurveyUrl(highlight.id)} style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 14, overflow: "hidden", textDecoration: "none", display: "block" }}>
+                <div style={{ padding: "16px 22px", borderBottom: `1px solid ${LINE_SOFT}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <b style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 14, color: INK }}>Achado recente</b>
+                  {kick("Resultado publicado")}
+                </div>
+                <div style={{ padding: 22 }}>
+                  <div style={{ fontFamily: "'Newsreader', serif", fontSize: 64, lineHeight: 0.95, color: BLUE, letterSpacing: "-0.02em" }}>{highlight.highlight_stat}</div>
+                  <p style={{ fontFamily: "'Newsreader', serif", fontSize: 18, lineHeight: 1.4, color: INK, margin: "10px 0 14px" }}>{highlight.highlight_label}</p>
+                  <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: MUTED, borderTop: `1px dashed ${LINE_SOFT}`, paddingTop: 12 }}>
+                    {highlight.title} · <span className="ix-link">Ver pesquisa completa →</span>
+                  </div>
+                </div>
+              </a>
+            )}
           </div>
-          <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, padding: 18 }}>
-            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14, color: INK, marginBottom: 4 }}>Responda e ganhe pontos</div>
-            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, lineHeight: 1.5, marginBottom: 10 }}>Troque por vouchers e descontos de comércios parceiros do Grande ABC.</div>
+        </section>
+
+        {/* ---------- índices ---------- */}
+        {indices.length > 0 && (
+          <section style={{ paddingTop: 56 }}>
+            {sectionHead("Curadoria", "Índices em destaque", <a href={indicesPageUrl()} className="ix-link">Todos os índices →</a>)}
+            <div className="ix-ixs">
+              {indices.map(idx => (
+                <a key={idx.id} href={indicesPageUrl()} style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 14, padding: 18, display: "flex", flexDirection: "column", textDecoration: "none", color: INK }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: MUTED }}>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: GOLD }}>{idx.category}</span>
+                    <span>{ABC_MAP_TILES[idx.city]?.short || idx.city}</span>
+                  </div>
+                  <div style={{ fontFamily: "'Newsreader', serif", fontSize: 36, color: BLUE, lineHeight: 1, margin: "14px 0 6px" }}>{idx.value}</div>
+                  <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, fontWeight: 600 }}>{idx.title}</div>
+                  <div style={{ marginTop: "auto", paddingTop: 12, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: MUTED }}>
+                    {idx.source_name}{idx.reference_period ? ` · ${idx.reference_period}` : ""}
+                  </div>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ---------- metodologia ---------- */}
+        <section style={{ paddingTop: 56 }}>
+          {sectionHead("Metodologia", "Como fazemos pesquisa")}
+          <div className="ix-meth" style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 14 }}>
+            {[
+              { n: "01", t: "Amostra representativa", d: "Cotas por idade e sexo, baseadas no Censo IBGE de cada cidade." },
+              { n: "02", t: "Coleta em dobro", d: "Coletamos cerca de 2× a amostra necessária, prevendo exclusões." },
+              { n: "03", t: "Tratamento antes de publicar", d: "Excluímos respostas suspeitas (muito rápidas, IPs duplicados, fora da cidade)." },
+            ].map(s => (
+              <div key={s.n}>
+                <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD }}>{s.n}</div>
+                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 15, color: INK, margin: "8px 0 6px" }}>{s.t}</div>
+                <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, lineHeight: 1.5 }}>{s.d}</div>
+              </div>
+            ))}
+            <div style={{ background: BLUE }}>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD }}>Garantias</div>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 15, color: "#fff", margin: "8px 0 6px" }}>Anônimo e transparente</div>
+              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: "#C6D3E2", lineHeight: 1.5 }}>Não pedimos nome nem e-mail para responder. Toda publicação traz fonte e período.</div>
+            </div>
+          </div>
+        </section>
+
+        {/* ---------- pontos, empresas, dúvidas ---------- */}
+        <section style={{ paddingTop: 56 }} className="ix-three">
+          <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 14, padding: 24, display: "flex", flexDirection: "column" }}>
+            {kick("Programa de pontos")}
+            <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: INK, margin: "8px 0" }}>Responda e ganhe pontos</div>
+            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: BLUE_SOFT, marginBottom: 14 }}>Troque por vouchers e descontos de comércios parceiros do Grande ABC.</div>
             {exampleReward && (
-              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD }}>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, marginBottom: 16 }}>
                 Ex: {exampleReward.name}{exampleReward.partner_name ? ` · ${exampleReward.partner_name}` : ""} · {exampleReward.points_cost} pontos
               </div>
             )}
+            <a href={pointsPageUrl()} style={{ marginTop: "auto", textDecoration: "none", alignSelf: "flex-start" }}><Button variant="ghost" style={{ padding: "8px 14px", fontSize: 13 }}>Troque seus pontos</Button></a>
           </div>
-        </div>
-
-        {/* 6. FAQ */}
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: GOLD, marginBottom: 6 }}>Dúvidas</div>
-        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: INK, marginBottom: 4 }}>Perguntas frequentes</div>
-        {FAQ.map((item, i) => (
-          <div key={i} style={{ borderTop: `1px solid ${LINE}`, borderBottom: i === FAQ.length - 1 ? `1px solid ${LINE}` : "none" }}>
-            <div onClick={() => setOpenFaq(openFaq === i ? null : i)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 0", cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 14, color: INK }}>
-              {item.q}
-              <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: GOLD, fontSize: 16, transform: openFaq === i ? "rotate(45deg)" : "none", transition: "transform 0.2s" }}>+</span>
-            </div>
-            {openFaq === i && (
-              <div style={{ padding: "0 0 16px", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, lineHeight: 1.6, maxWidth: "60ch" }}>{item.a}</div>
-            )}
+          <div style={{ background: BLUE, borderRadius: 14, padding: 24, display: "flex", flexDirection: "column" }}>
+            {kick("Para empresas")}
+            <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: "#fff", margin: "8px 0" }}>Sua empresa quer apoiar uma pesquisa?</div>
+            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: GOLD_SOFT, marginBottom: 16 }}>Empresas do Grande ABC podem patrocinar ou colaborar com estudos específicos do Instituto.</div>
+            <a href="mailto:institutoindiceabc@gmail.com" style={{ marginTop: "auto", textDecoration: "none", alignSelf: "flex-start" }}><Button variant="gold" style={{ padding: "8px 14px", fontSize: 13 }}>Fale conosco</Button></a>
           </div>
-        ))}
+          <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 14, padding: 24 }}>
+            {kick("Dúvidas")}
+            <div style={{ fontFamily: "'Newsreader', serif", fontSize: 22, fontWeight: 500, color: INK, margin: "8px 0" }}>Perguntas frequentes</div>
+            {FAQ.map((item, i) => (
+              <div key={i} style={{ borderTop: `1px solid ${LINE_SOFT}`, padding: "12px 0" }}>
+                <button onClick={() => setOpenFaq(openFaq === i ? null : i)} style={{ display: "flex", justifyContent: "space-between", width: "100%", background: "none", border: 0, padding: 0, cursor: "pointer", textAlign: "left", fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 13.5, color: INK }}>
+                  {item.q}<span style={{ fontFamily: "'IBM Plex Mono', monospace", color: GOLD }}>{openFaq === i ? "−" : "+"}</span>
+                </button>
+                {openFaq === i && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: BLUE_SOFT, marginTop: 6, lineHeight: 1.55 }}>{item.a}</div>}
+              </div>
+            ))}
+          </div>
+        </section>
 
-        {/* 7. Chamada pra empresas */}
-        <div style={{ background: BLUE, borderRadius: 10, padding: "28px 24px", margin: "36px 0 8px" }}>
-          <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 19, color: "#fff", marginBottom: 6 }}>Sua empresa quer apoiar uma pesquisa?</div>
-          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: GOLD_SOFT, maxWidth: "50ch", marginBottom: 14 }}>Empresas do Grande ABC podem patrocinar ou colaborar com estudos específicos do Instituto.</div>
-          <a href="mailto:institutoindiceabc@gmail.com" style={{ display: "inline-block", fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 13, color: BLUE, background: GOLD_SOFT, padding: "9px 18px", borderRadius: 6, textDecoration: "none" }}>Fale conosco</a>
-        </div>
-
-        <PageFooter />
+        {mostRecentAsOf && (
+          <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: MUTED, marginTop: 28 }}>
+            Contas públicas: consolidado oficial do TCE-SP de {new Date(mostRecentAsOf + "T00:00:00").toLocaleDateString("pt-BR")}; os valores “ao vivo” são uma projeção a partir dele. População: IBGE, Censo 2022.
+          </p>
+        )}
       </div>
     </PublicLayout>
   );
@@ -1860,48 +2393,93 @@ function PublicAccountsPage() {
     })();
   }, []);
 
-  const fmt = (v) => "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-  const mostRecentAsOf = accounts && accounts.length > 0
-    ? accounts.reduce((max, a) => (a.as_of > max ? a.as_of : max), accounts[0].as_of)
-    : null;
+  const rows = (accounts || []).map(a => {
+    const receita = Number(a.receita), despesa = Number(a.despesa);
+    const pop = ABC_POPULATION[a.city] || null;
+    return { ...a, receita, despesa, pop, gap: receita > 0 ? (despesa - receita) / receita : 0, perCapita: pop ? receita / pop : null };
+  });
+  const totalReceita = rows.reduce((s, r) => s + r.receita, 0);
+  const totalDespesa = rows.reduce((s, r) => s + r.despesa, 0);
+  const totalPop = rows.reduce((s, r) => s + (r.pop || 0), 0);
+  const regionGap = totalReceita > 0 ? (totalDespesa - totalReceita) / totalReceita : 0;
+  const gapMax = Math.max(0.0001, ...rows.map(r => Math.abs(r.gap)));
+  const mostRecentAsOf = rows.reduce((m, a) => (!m || a.as_of > m ? a.as_of : m), null);
+  const asOfLabel = mostRecentAsOf ? new Date(mostRecentAsOf + "T00:00:00").toLocaleDateString("pt-BR") : "—";
+  const signed = (v) => `${v > 0 ? "−" : "+"}${fmtBRL(Math.abs(v))}`;
+
+  const kpi = (label, value, note, color) => (
+    <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 14, padding: "18px 20px", boxShadow: "0 10px 30px rgba(15,46,82,.08)" }}>
+      <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT }}>{label}</div>
+      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 24, fontWeight: 500, color: color || BLUE, marginTop: 6, whiteSpace: "nowrap" }}>{value}</div>
+      <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: MUTED, marginTop: 2 }}>{note}</div>
+    </div>
+  );
 
   return (
     <PublicLayout>
       <PageMeta title="Contas Públicas" description="Receita e despesa das 7 cidades do Grande ABC, com base em dados do TCE-SP." />
 
-      <PageBand>
-        <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 28, color: "#fff", margin: "0 0 8px" }}>Contas Públicas</div>
-        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, color: GOLD_SOFT, maxWidth: "56ch" }}>Receita e despesa das 7 cidades do Grande ABC, com base no TCE-SP</div>
-      </PageBand>
-
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "36px 16px 60px" }}>
-        {accounts === null ? (
-          <Loader2 className="spin" size={18} color={BLUE_SOFT} />
-        ) : (
-          accounts.map((a, i) => (
-            <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 0", borderTop: `1px solid ${LINE}`, borderBottom: i === accounts.length - 1 ? `1px solid ${LINE}` : "none", gap: 16, flexWrap: "wrap" }}>
-              <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: 15, color: INK }}>{a.city}</div>
-              <div style={{ display: "flex", gap: 20 }}>
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 9.5, color: BLUE_SOFT, textTransform: "uppercase" }}>Receita</span>
-                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: INK }}>{fmt(a.receita)}</span>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 9.5, color: BLUE_SOFT, textTransform: "uppercase" }}>Despesa</span>
-                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: INK }}>{fmt(a.despesa)}</span>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-
-        <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: BLUE_SOFT, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 8, padding: "12px 14px", lineHeight: 1.6, marginTop: 20 }}>
-          Os valores acima "andam" visualmente com base numa projeção estimada — o consolidado oficial mais recente na fonte é de{" "}
-          {mostRecentAsOf ? new Date(mostRecentAsOf + "T00:00:00").toLocaleDateString("pt-BR") : "—"}.{" "}
-          <a href="https://transparencia.tce.sp.gov.br" target="_blank" rel="noopener noreferrer" style={{ color: BLUE, fontWeight: 600 }}>transparencia.tce.sp.gov.br</a>
+      <div className="ix-grid-bg" style={{ background: BLUE, color: "#fff", padding: "40px 0 84px" }}>
+        <div className="ix-wrap">
+          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, letterSpacing: "0.06em", textTransform: "uppercase", color: GOLD }}>Transparência · TCE-SP</div>
+          <h1 style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontSize: 42, margin: "10px 0 8px" }}>Contas Públicas</h1>
+          <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 15, color: GOLD_SOFT, maxWidth: "60ch" }}>Receita e despesa das 7 cidades do Grande ABC, com base no TCE-SP.</div>
         </div>
+      </div>
 
-        <PageFooter />
+      <div className="ix-wrap" style={{ marginTop: -44, position: "relative" }}>
+        {accounts === null ? (
+          <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 14, padding: 40, textAlign: "center" }}><Loader2 className="spin" size={18} color={BLUE_SOFT} /></div>
+        ) : (
+          <>
+            <div className="ix-kpis">
+              {kpi("Receita total", fmtBi(totalReceita), `consolidado ${asOfLabel}`)}
+              {kpi("Despesa total", fmtBi(totalDespesa), `consolidado ${asOfLabel}`)}
+              {kpi("Diferença", `${totalDespesa > totalReceita ? "−" : "+"}${fmtBi(Math.abs(totalDespesa - totalReceita))}`, `despesa ${fmtPct(Math.abs(regionGap))} ${regionGap >= 0 ? "acima" : "abaixo"} da receita`, totalDespesa > totalReceita ? RED : "#2F7A55")}
+              {kpi("Receita por habitante", totalPop ? fmtBRL(totalReceita / totalPop) : "—", "média do Grande ABC")}
+            </div>
+
+            <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 14, marginTop: 20, overflowX: "auto" }}>
+              <table className="ix-table">
+                <thead>
+                  <tr><th>Município</th><th>População</th><th>Receita</th><th>Despesa</th><th>Diferença</th><th>Despesa × receita</th><th>Receita/hab.</th></tr>
+                </thead>
+                <tbody>
+                  {rows.map(r => (
+                    <tr key={r.id}>
+                      <td>{r.city}</td>
+                      <td>{r.pop ? r.pop.toLocaleString("pt-BR") : "—"}</td>
+                      <td>{fmtBRL(r.receita)}</td>
+                      <td>{fmtBRL(r.despesa)}</td>
+                      <td style={{ color: r.despesa > r.receita ? RED : "#2F7A55" }}>{signed(r.despesa - r.receita)}</td>
+                      <td style={{ color: r.gap >= 0 ? RED : "#2F7A55" }}>
+                        {r.gap >= 0 ? "+" : ""}{fmtPct(r.gap)}
+                        <span style={{ display: "inline-block", width: 70, height: 6, background: PAPER_DARK, borderRadius: 3, verticalAlign: "middle", marginLeft: 8, overflow: "hidden" }}>
+                          <i style={{ display: "block", height: "100%", width: `${(Math.abs(r.gap) / gapMax) * 100}%`, background: r.gap >= 0 ? RED : "#2F7A55" }} />
+                        </span>
+                      </td>
+                      <td>{r.perCapita ? fmtBRL(r.perCapita) : "—"}</td>
+                    </tr>
+                  ))}
+                  <tr className="total">
+                    <td>Grande ABC</td>
+                    <td>{totalPop.toLocaleString("pt-BR")}</td>
+                    <td>{fmtBRL(totalReceita)}</td>
+                    <td>{fmtBRL(totalDespesa)}</td>
+                    <td style={{ color: totalDespesa > totalReceita ? RED : "#2F7A55" }}>{signed(totalDespesa - totalReceita)}</td>
+                    <td style={{ color: regionGap >= 0 ? RED : "#2F7A55" }}>{regionGap >= 0 ? "+" : ""}{fmtPct(regionGap)}</td>
+                    <td>{totalPop ? fmtBRL(totalReceita / totalPop) : "—"}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, background: "#fff", border: `1px solid ${LINE}`, borderLeft: `3px solid ${GOLD}`, borderRadius: 8, padding: "12px 16px", lineHeight: 1.6, marginTop: 16, maxWidth: 900 }}>
+              A tabela mostra o <b>consolidado oficial</b> mais recente, de {asOfLabel}. A faixa fixa no rodapé do site mostra uma <b>projeção ao vivo</b> estimada a partir desses valores — por isso os números são diferentes. Fontes:{" "}
+              <a href="https://transparencia.tce.sp.gov.br" target="_blank" rel="noopener noreferrer" style={{ color: BLUE, fontWeight: 600 }}>transparencia.tce.sp.gov.br</a> · População: IBGE, Censo 2022.
+            </div>
+          </>
+        )}
       </div>
     </PublicLayout>
   );
@@ -2332,13 +2910,6 @@ function SurveyList({ onCreate, onOpen, onViewSubscribers, onViewRewards, onView
           <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT }}>{surveys.length} {surveys.length === 1 ? "pesquisa criada" : "pesquisas criadas"}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Button variant="ghost" onClick={onViewOverview}>Visão Geral</Button>
-          <Button variant="ghost" onClick={onViewPointsReport}>Relatório de Pontos</Button>
-          <Button variant="ghost" onClick={onViewSubscribers}>Inscritos</Button>
-          <Button variant="ghost" onClick={onViewRewards}>Recompensas</Button>
-          <Button variant="ghost" onClick={onViewAccounts}>Contas Públicas</Button>
-          <Button variant="ghost" onClick={onViewUpcoming}>Em breve</Button>
-          <Button variant="ghost" onClick={onViewIndices}>Índices</Button>
           <Button variant="gold" onClick={onCreate}><Plus size={15} /> Nova pesquisa</Button>
         </div>
       </div>
@@ -2360,7 +2931,7 @@ function SurveyList({ onCreate, onOpen, onViewSubscribers, onViewRewards, onView
             )}
           </div>
           {s.description && <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: BLUE_SOFT, marginTop: 3 }}>{s.description}</div>}
-          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD, marginTop: 8 }}>{s.questions.length} perguntas · meta de {s.quotas.reduce((sum, q) => sum + q.target, 0)} respostas</div>
+          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: GOLD, marginTop: 8 }}>{s.questions.length} {s.questions.length === 1 ? "pergunta" : "perguntas"} · meta de {s.quotas.reduce((sum, q) => sum + q.target, 0)} respostas</div>
         </button>
       ))}
     </div>
@@ -3204,6 +3775,13 @@ function SurveyMapView({ survey, onBack }) {
   );
 }
 
+// Menu lateral do painel administrativo: [grupo, [[view, rótulo], ...]]
+const ADMIN_NAV = [
+  ["Pesquisas", [["list", "Todas as pesquisas"], ["overview", "Visão geral"], ["upcoming", "Próximas pesquisas"]]],
+  ["Participantes", [["subscribers", "Inscritos"], ["rewards", "Recompensas"], ["pointsreport", "Relatório de pontos"]]],
+  ["Conteúdo do site", [["indices", "Índices"], ["accounts", "Contas Públicas (TCE)"]]],
+];
+
 // ---------- App ----------
 export default function App() {
   const isPublic = !!getPublicSurveyId();
@@ -3226,6 +3804,9 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, [isAdmin]);
 
+  // Criar/editar, painel da pesquisa e mapa pertencem à seção "Pesquisas" do menu
+  const adminSection = ["create", "dashboard", "map"].includes(view) ? "list" : view;
+
   const globalStyle = (
     <style>{`
       ${FONT_IMPORT}
@@ -3235,16 +3816,7 @@ export default function App() {
       @keyframes spin { to { transform: rotate(360deg); } }
       body { margin: 0; }
 
-      .pl-shell { display: block; }
-      .pl-sidebar { display: none; }
-      .pl-mobile-nav { display: block; }
-      .pl-content { min-width: 0; }
-      @media (min-width: 900px) {
-        .pl-shell { display: flex; align-items: flex-start; }
-        .pl-sidebar { display: flex; }
-        .pl-mobile-nav { display: none; }
-        .pl-content { flex: 1; }
-      }
+      ${LAYOUT_CSS}
 
       .step-fade { animation: stepFadeIn 0.25s ease; }
       @keyframes stepFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
@@ -3318,13 +3890,28 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'IBM Plex Sans', sans-serif" }}>
       {globalStyle}
-      <HeaderBanner />
-      <div style={{ borderBottom: `1px solid ${LINE}`, background: "#fff", padding: "8px 16px", display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
-        <button onClick={() => supabase.auth.signOut()} style={{ background: "none", border: "none", cursor: "pointer", color: BLUE_SOFT, display: "flex", alignItems: "center", gap: 4, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5 }}>
-          <LogOut size={14} /> Sair
-        </button>
-      </div>
-
+      <div className="ix-adm">
+        <aside className="ix-aside">
+          <div className="ix-aside-brand" style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 6px" }}>
+            <LogoMark size={36} />
+            <div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, letterSpacing: "0.2em", color: GOLD_SOFT }}>PAINEL</div>
+              <div style={{ fontFamily: "Georgia, serif", fontWeight: 700, fontSize: 14, color: "#fff" }}>ÍNDICE ABC</div>
+            </div>
+          </div>
+          {ADMIN_NAV.map(([group, items]) => (
+            <React.Fragment key={group}>
+              <div className="ix-aside-group">{group}</div>
+              {items.map(([key, label]) => (
+                <button key={key} className={adminSection === key ? "on" : ""} onClick={() => { setActiveSurvey(null); setView(key); }}>{label}</button>
+              ))}
+            </React.Fragment>
+          ))}
+          <div className="ix-aside-group">Conta</div>
+          <button onClick={() => { window.location.href = homePageUrl(); }}>↗ Ver site</button>
+          <button onClick={() => supabase.auth.signOut()}><span style={{ display: "flex", alignItems: "center", gap: 6 }}><LogOut size={14} /> Sair</span></button>
+        </aside>
+        <main style={{ minWidth: 0 }}>
       {view === "list" && <SurveyList onCreate={() => { setActiveSurvey(null); setView("create"); }} onOpen={(s) => { setActiveSurvey(s); setView("dashboard"); }} onViewSubscribers={() => setView("subscribers")} onViewRewards={() => setView("rewards")} onViewOverview={() => setView("overview")} onViewPointsReport={() => setView("pointsreport")} onViewAccounts={() => setView("accounts")} onViewUpcoming={() => setView("upcoming")} onViewIndices={() => setView("indices")} />}
       {view === "create" && <CreateSurvey userId={session.user.id} editingSurvey={activeSurvey} onCancel={() => setView(activeSurvey ? "dashboard" : "list")} onSave={(s) => { setActiveSurvey(s); setView("dashboard"); }} />}
       {view === "dashboard" && activeSurvey && (
@@ -3346,6 +3933,8 @@ export default function App() {
       {view === "upcoming" && <UpcomingSurveysAdmin onBack={() => setView("list")} />}
       {view === "indices" && <IndicesAdmin onBack={() => setView("list")} />}
       {view === "map" && activeSurvey && <SurveyMapView survey={activeSurvey} onBack={() => setView("dashboard")} />}
+        </main>
+      </div>
     </div>
   );
 }
